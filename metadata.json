@@ -1,0 +1,5 @@
+{
+  "name": "Aorus Drops Analytics",
+  "description": "Dashboard de drops resiliente com sistema de redundância tripla (API, HTML, MOCK).",
+  "requestFramePermissions": []
+}

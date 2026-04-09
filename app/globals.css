@@ -1,0 +1,66 @@
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --aorus-orange: #ff9c00;
+  --aorus-orange-deep: #ff5e00;
+  --font-exo: 'Exo', sans-serif;
+}
+
+body { 
+  font-family: 'Exo', sans-serif; 
+  background-color: #000000; 
+  color: #e2e8f0; 
+  margin: 0;
+  padding: 0;
+  overflow-x: hidden;
+}
+
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: #000; }
+::-webkit-scrollbar-thumb { background: var(--aorus-orange); border-radius: 10px; }
+
+/* Ícones nativos de date e time na cor #ff9c00 com opacidade 60% */
+/* Força os ícones de data e hora a serem amarelos (#ff9c00) e visíveis no tema escuro */
+input::-webkit-calendar-picker-indicator {
+    filter: invert(58%) sepia(92%) saturate(1150%) hue-rotate(2deg) brightness(103%) contrast(104%); 
+    cursor: pointer;
+    opacity: 0.8;
+    transition: opacity 0.2s;
+}
+
+.aorus-border-glow {
+  box-shadow: 0 0 15px rgba(255, 156, 0, 0.2);
+  border: 1px solid rgba(255, 156, 0, 0.3);
+}
+
+.aorus-card {
+  background: linear-gradient(145deg, #0d0d0d, #050505);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  transition: all 0.3s ease;
+}
+
+.aorus-card:hover {
+  border-color: rgba(255, 156, 0, 0.4);
+  box-shadow: 0 0 20px rgba(255, 156, 0, 0.1);
+}
+
+.btn-aorus {
+    background: linear-gradient(135deg, #ff9c00 0%, #ff5e00 100%);
+    color: #000;
+    font-weight: 900;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    transition: all 0.2s;
+}
+.btn-aorus:hover {
+    filter: brightness(1.1);
+    transform: translateY(-1px);
+    box-shadow: 0 0 15px rgba(255, 156, 0, 0.5);
+}
+
+.custom-scrollbar::-webkit-scrollbar {
+  height: 4px;
+}
