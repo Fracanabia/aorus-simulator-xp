@@ -310,11 +310,24 @@ export default function App() {
   // 👇 carrega do localStorage no client
   useEffect(() => {
     const saved = localStorage.getItem('aorus_quests');
+    const defaults = getDefaultQuests();
 
     if (saved) {
-      setQuests(JSON.parse(saved));
+      try {
+        const parsed: Quest[] = JSON.parse(saved);
+        const existingIds = new Set(parsed.map(q => q.id));
+        const missingDefaults = defaults.filter(d => !existingIds.has(d.id));
+        
+        if (missingDefaults.length > 0) {
+          setQuests([...parsed, ...missingDefaults]);
+        } else {
+          setQuests(parsed);
+        }
+      } catch (e) {
+        setQuests(defaults);
+      }
     } else {
-      setQuests(getDefaultQuests());
+      setQuests(defaults);
     }
   }, []);
 
