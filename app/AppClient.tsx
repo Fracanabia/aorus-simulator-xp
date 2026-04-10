@@ -82,7 +82,7 @@ export default function App() {
     if (boosts.relic) bonus += 15;
     if (boosts.vip) bonus += 10;
     if (boosts.phoenix) bonus += 20;
-    return Math.ceil(xp / (1 + bonus / 100));
+    return xp / (1 + bonus / 100);
   };
 
   const initialBase = calculateBase(initialXpRecebida, initialUBoosts);
@@ -108,7 +108,120 @@ export default function App() {
 
 
   const getDefaultQuests = (): Quest[] => {
-    const daily_solo: Quest[] = [
+    const daily: Quest[] = [
+      {
+        id: "w52l04pgx",
+        name: "Firelands",
+        exp: 5200000000,
+        active: false,
+        type: "daily",
+        isFixed: true
+      },
+      {
+        id: "vow255ldw",
+        name: "MISTERY DESERT 3",
+        exp: 5200000000,
+        active: false,
+        type: "daily",
+        isFixed: true
+      },
+      {
+        id: "jfstwvbhl",
+        name: "ICEMINE",
+        exp: 5200000000,
+        active: false,
+        type: "daily",
+        isFixed: true
+      },
+      {
+        id: "4dx5n1t5v",
+        name: "Secret Laboratory",
+        exp: 6500000000,
+        active: false,
+        type: "daily",
+        isFixed: true
+      }
+    ];
+
+    const solo: Quest[] = [
+      {
+        id: "cn81pnor2",
+        name: "Firelands",
+        exp: 250000000,
+        active: false,
+        type: "solo",
+        mobsNeeded: 250,
+        isFixed: true
+      },
+      {
+        id: "okb8r13f7",
+        name: "ICEMINE",
+        exp: 180000000,
+        active: false,
+        type: "solo",
+        mobsNeeded: 250,
+        isFixed: true
+      },
+      {
+        id: "1fjfqledi",
+        name: "MISTERY DESERT 3",
+        exp: 180000000,
+        active: false,
+        type: "solo",
+        mobsNeeded: 250,
+        isFixed: true
+      }
+    ];
+
+    const repetitive: Quest[] = [
+      {
+        id: "4ckhcmo1a",
+        name: "Firelands",
+        exp: 200000000,
+        active: false,
+        type: "repetitive",
+        mobsNeeded: 600,
+        isFixed: true
+      },
+      {
+        id: "4ckhxcmo1a",
+        name: "Icemine",
+        exp: 90000000,
+        active: false,
+        type: "repetitive",
+        mobsNeeded: 600,
+        isFixed: true
+      },
+      {
+        id: "4ckhacmo1a",
+        name: "Mistery Desert 3",
+        exp: 90000000,
+        active: false,
+        type: "repetitive",
+        mobsNeeded: 600,
+        isFixed: true
+      },
+      {
+        id: "4ckhascmo1a",
+        name: "Secret Lab",
+        exp: 100000000,
+        active: false,
+        type: "repetitive",
+        mobsNeeded: 800,
+        isFixed: true
+      },
+      {
+        id: "m1nop82t6",
+        name: "Secret Lab",
+        exp: 200000000,
+        active: false,
+        type: "solo",
+        mobsNeeded: 350,
+        isFixed: true
+      }
+    ];
+
+    const dailySolo: Quest[] = [
       {
         id: "7239xavhhhj",
         name: "Shy",
@@ -172,68 +285,22 @@ export default function App() {
         active: false,
         type: "daily_solo",
         isFixed: true
-      }
-    ];
-
-    const repetitive: Quest[] = [
-      {
-        id: "4ckhcmo1a",
-        name: "Firelands",
-        exp: 200000000,
-        active: false,
-        type: "repetitive",
-        mobsNeeded: 600,
-        isFixed: true
       },
       {
-        id: "4ckhxcmo1a",
-        name: "Icemine",
-        exp: 90000000,
+        id: "61xn4gfp9",
+        name: "TULLA",
+        exp: 1500000000,
         active: false,
-        type: "repetitive",
-        mobsNeeded: 600,
-        isFixed: true
-      },
-      {
-        id: "4ckhacmo1a",
-        name: "Mistery Desert 3",
-        exp: 90000000,
-        active: false,
-        type: "repetitive",
-        mobsNeeded: 600,
-        isFixed: true
-      },
-      {
-        id: "4ckhascmo1a",
-        name: "Secret Lab",
-        exp: 100000000,
-        active: false,
-        type: "repetitive",
-        mobsNeeded: 800,
+        type: "daily_solo",
         isFixed: true
       }
     ];
 
     return [
-      {
-        id: "w52l04pgx",
-        name: "Firelands",
-        exp: 5200000000,
-        active: false,
-        type: "daily",
-        isFixed: true
-      },
-      {
-        id: "cn81pnor2",
-        name: "Firelands",
-        exp: 250000000,
-        active: false,
-        type: "solo",
-        mobsNeeded: 250,
-        isFixed: true
-      },
+      ...daily,
+      ...solo,
       ...repetitive,
-      ...daily_solo
+      ...dailySolo,
     ];
   };
 
@@ -287,9 +354,9 @@ export default function App() {
   };
 
   const handleCalcularBase = () => {
-    const baseCeil = calculateBase(xpRecebida, uBoosts);
-    setBaseCalculada(Math.floor(baseCeil));
-    setBaseXP(baseCeil);
+    const rawBase = calculateBase(xpRecebida, uBoosts);
+    setBaseCalculada(Math.ceil(rawBase));
+    setBaseXP(rawBase);
   };
 
   // Calculations
@@ -322,21 +389,17 @@ export default function App() {
       .reduce((acc, q) => acc + q.exp, 0);
 
     // Calculate repetitive quest XP per minute (Group)
-    const repetitiveQuestsXPPerMin = quests
-      .filter(q => q.active && q.type === 'repetitive')
-      .reduce((acc, q) => {
-        const completionsPerMin = mobsPerMin / (q.mobsNeeded || 1);
-        return acc + (completionsPerMin * q.exp);
-      }, 0);
+    const activeRepetitiveQuests = quests.filter(q => q.active && q.type === 'repetitive');
+    const totalRepetitiveMobs = activeRepetitiveQuests.reduce((acc, q) => acc + (q.mobsNeeded || 0), 0);
+    const totalRepetitiveXP = activeRepetitiveQuests.reduce((acc, q) => acc + q.exp, 0);
+    const repetitiveQuestsXPPerMin = totalRepetitiveMobs > 0 ? (mobsPerMin / totalRepetitiveMobs) * totalRepetitiveXP : 0;
 
     // Calculate solo repetitive quest XP per minute
-    const soloQuestsXPPerMin = quests
-      .filter(q => q.active && q.type === 'solo')
-      .reduce((acc, q) => {
-        const soloMobsPerMin = mobsPerMin / (partySize || 1);
-        const completionsPerMin = soloMobsPerMin / (q.mobsNeeded || 1);
-        return acc + (completionsPerMin * q.exp);
-      }, 0);
+    const activeSoloQuests = quests.filter(q => q.active && q.type === 'solo');
+    const totalSoloMobs = activeSoloQuests.reduce((acc, q) => acc + (q.mobsNeeded || 0), 0);
+    const totalSoloXP = activeSoloQuests.reduce((acc, q) => acc + q.exp, 0);
+    const soloMobsPerMin = mobsPerMin / (partySize || 1);
+    const soloQuestsXPPerMin = totalSoloMobs > 0 ? (soloMobsPerMin / totalSoloMobs) * totalSoloXP : 0;
 
     for (let i = 1; i <= days; i++) {
       const mins = minPerDay * i;
@@ -387,21 +450,20 @@ export default function App() {
   };
 
   const compositionData = useMemo(() => {
-    const base = baseXP * mobsPerMin;
-    const xp100 = sBoosts.xp100 ? baseXP * mobsPerMin : 0;
-    const xp120 = sBoosts.xp120 ? baseXP * 1.2 * mobsPerMin : 0;
-    const comp = sBoosts.comp ? baseXP * (10 / 100) * mobsPerMin : 0;
-    const pk = sBoosts.pk ? baseXP * (15 / 100) * mobsPerMin : 0;
-    const relic = sBoosts.relic ? baseXP * (15 / 100) * mobsPerMin : 0;
-    const vip = sBoosts.vip ? baseXP * (10 / 100) * mobsPerMin : 0;
-    const phoenix = sBoosts.phoenix ? baseXP * (20 / 100) * mobsPerMin : 0;
+    const minPerDay = 1440;
+    const base = baseXP * mobsPerMin * minPerDay;
+    const xp100 = sBoosts.xp100 ? baseXP * mobsPerMin * minPerDay : 0;
+    const xp120 = sBoosts.xp120 ? baseXP * 1.2 * mobsPerMin * minPerDay : 0;
+    const comp = sBoosts.comp ? baseXP * (10 / 100) * mobsPerMin * minPerDay : 0;
+    const pk = sBoosts.pk ? baseXP * (15 / 100) * mobsPerMin * minPerDay : 0;
+    const relic = sBoosts.relic ? baseXP * (15 / 100) * mobsPerMin * minPerDay : 0;
+    const vip = sBoosts.vip ? baseXP * (10 / 100) * mobsPerMin * minPerDay : 0;
+    const phoenix = sBoosts.phoenix ? baseXP * (20 / 100) * mobsPerMin * minPerDay : 0;
 
-    const repetitiveQuestsXPPerMin = quests
-      .filter(q => q.active && q.type === 'repetitive')
-      .reduce((acc, q) => {
-        const completionsPerMin = mobsPerMin / (q.mobsNeeded || 1);
-        return acc + (completionsPerMin * q.exp);
-      }, 0);
+    const activeRepetitiveQuests = quests.filter(q => q.active && q.type === 'repetitive');
+    const totalRepetitiveMobs = activeRepetitiveQuests.reduce((acc, q) => acc + (q.mobsNeeded || 0), 0);
+    const totalRepetitiveXP = activeRepetitiveQuests.reduce((acc, q) => acc + q.exp, 0);
+    const repetitiveQuestsXPPerDay = totalRepetitiveMobs > 0 ? (mobsPerMin / totalRepetitiveMobs) * totalRepetitiveXP * minPerDay : 0;
 
     const dailyQuestsXP = quests
       .filter(q => q.active && q.type === 'daily')
@@ -411,16 +473,11 @@ export default function App() {
       .filter(q => q.active && q.type === 'daily_solo')
       .reduce((acc, q) => acc + q.exp, 0);
 
-    const soloQuestsXPPerMin = quests
-      .filter(q => q.active && q.type === 'solo')
-      .reduce((acc, q) => {
-        const soloMobsPerMin = mobsPerMin / (partySize || 1);
-        const completionsPerMin = soloMobsPerMin / (q.mobsNeeded || 1);
-        return acc + (completionsPerMin * q.exp);
-      }, 0);
-
-    const dailyQuestsXPPerMin = dailyQuestsXP / 1440;
-    const dailySoloQuestsXPPerMin = dailySoloQuestsXP / 1440;
+    const activeSoloQuests = quests.filter(q => q.active && q.type === 'solo');
+    const totalSoloMobs = activeSoloQuests.reduce((acc, q) => acc + (q.mobsNeeded || 0), 0);
+    const totalSoloXP = activeSoloQuests.reduce((acc, q) => acc + q.exp, 0);
+    const soloMobsPerMin = mobsPerMin / (partySize || 1);
+    const soloQuestsXPPerDay = totalSoloMobs > 0 ? (soloMobsPerMin / totalSoloMobs) * totalSoloXP * minPerDay : 0;
 
     return [
       { name: 'Base', value: base, color: '#475569' },
@@ -431,21 +488,24 @@ export default function App() {
       ...(relic ? [{ name: 'Relíquia', value: relic, color: '#f59e0b' }] : []),
       ...(vip ? [{ name: 'VIP', value: vip, color: '#0ea5e9' }] : []),
       ...(phoenix ? [{ name: 'Phoenix', value: phoenix, color: '#f43f5e' }] : []),
-      ...(dailyQuestsXPPerMin ? [{ name: 'Diárias (G)', value: dailyQuestsXPPerMin, color: '#3b82f6' }] : []),
-      ...(dailySoloQuestsXPPerMin ? [{ name: 'Diárias (S)', value: dailySoloQuestsXPPerMin, color: '#06b6d4' }] : []),
-      ...(repetitiveQuestsXPPerMin ? [{ name: 'Repetitivas (G)', value: repetitiveQuestsXPPerMin, color: '#a855f7' }] : []),
-      ...(soloQuestsXPPerMin ? [{ name: 'Repetitivas (S)', value: soloQuestsXPPerMin, color: '#ec4899' }] : []),
+      ...(dailyQuestsXP ? [{ name: 'Diárias (G)', value: dailyQuestsXP, color: '#3b82f6' }] : []),
+      ...(dailySoloQuestsXP ? [{ name: 'Diárias (S)', value: dailySoloQuestsXP, color: '#06b6d4' }] : []),
+      ...(repetitiveQuestsXPPerDay ? [{ name: 'Repetitivas (G)', value: repetitiveQuestsXPPerDay, color: '#a855f7' }] : []),
+      ...(soloQuestsXPPerDay ? [{ name: 'Repetitivas (S)', value: soloQuestsXPPerDay, color: '#ec4899' }] : []),
     ];
   }, [baseXP, sBoosts, quests, mobsPerMin, partySize]);
 
   const currentRate = useMemo(() => {
-    const repetitiveXP = quests
-      .filter(q => q.active && q.type === 'repetitive')
-      .reduce((acc, q) => acc + (mobsPerMin / (q.mobsNeeded || 1)) * q.exp, 0);
+    const activeRepetitiveQuests = quests.filter(q => q.active && q.type === 'repetitive');
+    const totalRepetitiveMobs = activeRepetitiveQuests.reduce((acc, q) => acc + (q.mobsNeeded || 0), 0);
+    const totalRepetitiveXP = activeRepetitiveQuests.reduce((acc, q) => acc + q.exp, 0);
+    const repetitiveXP = totalRepetitiveMobs > 0 ? (mobsPerMin / totalRepetitiveMobs) * totalRepetitiveXP : 0;
 
-    const soloXP = quests
-      .filter(q => q.active && q.type === 'solo')
-      .reduce((acc, q) => acc + ((mobsPerMin / partySize) / (q.mobsNeeded || 1)) * q.exp, 0);
+    const activeSoloQuests = quests.filter(q => q.active && q.type === 'solo');
+    const totalSoloMobs = activeSoloQuests.reduce((acc, q) => acc + (q.mobsNeeded || 0), 0);
+    const totalSoloXP = activeSoloQuests.reduce((acc, q) => acc + q.exp, 0);
+    const soloMobsPerMin = mobsPerMin / (partySize || 1);
+    const soloXP = totalSoloMobs > 0 ? (soloMobsPerMin / totalSoloMobs) * totalSoloXP : 0;
 
     const dailyXP = quests
       .filter(q => q.active && q.type === 'daily')
@@ -577,6 +637,14 @@ export default function App() {
                   </h2>
                 </div>
                 <div className="space-y-4">
+                  <div className="bg-white/5 border border-white/10 p-3 rounded-xl flex gap-3 items-start">
+                    <Info size={16} className="text-[#ff9c00] shrink-0 mt-0.5" />
+                    <p className="text-[10px] leading-relaxed text-slate-400">
+                      <strong className="text-white block mb-1">COMO FUNCIONA O CÁLCULO BASE?</strong>
+                      Insira a XP que você vê subindo na tela do jogo e selecione quais bônus estavam ativos naquele momento. O sistema irá calcular o valor real (base) do monstro sem nenhum multiplicador.
+                    </p>
+                  </div>
+
                   <div>
                     <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1 ml-1">XP Recebida no Jogo</label>
                     <input
@@ -651,6 +719,14 @@ export default function App() {
                 </div>
 
                 <div className="space-y-4">
+                  <div className="bg-white/5 border border-white/10 p-3 rounded-xl flex gap-3 items-start">
+                    <Info size={16} className="text-[#ff9c00] shrink-0 mt-0.5" />
+                    <p className="text-[10px] leading-relaxed text-slate-400">
+                      <strong className="text-white block mb-1">COMO FUNCIONA A CONFIGURAÇÃO?</strong>
+                      Defina o valor base do monstro (ou use o valor calculado ao lado) e selecione os bônus que pretende usar. O sistema calculará a XP final estimada por monstro com todos os multiplicadores aplicados.
+                    </p>
+                  </div>
+
                   <div>
                     <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1 ml-1">Base XP do Mob</label>
                     <input
@@ -668,43 +744,43 @@ export default function App() {
                         active={sBoosts.xp100}
                         onClick={() => toggleBoost('s', 'xp100')}
                         label="XP 100%"
-                        preview={`+ ${baseXP.toLocaleString()}`}
+                        preview={`+ ${Math.round(baseXP).toLocaleString()}`}
                       />
                       <AorusCheckboxRow
                         active={sBoosts.xp120}
                         onClick={() => toggleBoost('s', 'xp120')}
                         label="XP 120%"
-                        preview={`+ ${(baseXP * 1.2).toLocaleString()}`}
+                        preview={`+ ${Math.round(baseXP * 1.2).toLocaleString()}`}
                       />
                       <AorusCheckboxRow
                         active={sBoosts.comp}
                         onClick={() => toggleBoost('s', 'comp')}
                         label="10% Complementar"
-                        preview={`+ ${Math.floor(baseXP * (10 / 100)).toLocaleString()}`}
+                        preview={`+ ${Math.round(baseXP * (10 / 100)).toLocaleString()}`}
                       />
                       <AorusCheckboxRow
                         active={sBoosts.pk}
                         onClick={() => toggleBoost('s', 'pk')}
                         label="15% PK"
-                        preview={`+ ${Math.floor(baseXP * (15 / 100)).toLocaleString()}`}
+                        preview={`+ ${Math.round(baseXP * (15 / 100)).toLocaleString()}`}
                       />
                       <AorusCheckboxRow
                         active={sBoosts.relic}
                         onClick={() => toggleBoost('s', 'relic')}
                         label="15% Relíquia"
-                        preview={`+ ${Math.floor(baseXP * (15 / 100)).toLocaleString()}`}
+                        preview={`+ ${Math.round(baseXP * (15 / 100)).toLocaleString()}`}
                       />
                       <AorusCheckboxRow
                         active={sBoosts.vip}
                         onClick={() => toggleBoost('s', 'vip')}
                         label="10% VIP"
-                        preview={`+ ${Math.floor(baseXP * (10 / 100)).toLocaleString()}`}
+                        preview={`+ ${Math.round(baseXP * (10 / 100)).toLocaleString()}`}
                       />
                       <AorusCheckboxRow
                         active={sBoosts.phoenix}
                         onClick={() => toggleBoost('s', 'phoenix')}
                         label="20% Phoenix"
-                        preview={`+ ${Math.floor(baseXP * (20 / 100)).toLocaleString()}`}
+                        preview={`+ ${Math.round(baseXP * (20 / 100)).toLocaleString()}`}
                       />
                     </div>
                   </div>
@@ -718,7 +794,7 @@ export default function App() {
                         type="number"
                         value={mobsPerMin}
                         onChange={(e) => setMobsPerMin(Number(e.target.value))}
-                        className="w-full bg-black border border-white/10 px-3 py-2 text-white focus:outline-none focus:border-[#ff9c00] transition-all text-sm"
+                        className="w-full bg-black border border-white/10 px-3 py-2 text-white focus:outline-none focus:border-[#ff9c00] transition-all text-sm rounded-lg"
                       />
                     </div>
                     <div>
@@ -729,7 +805,7 @@ export default function App() {
                         type="number"
                         value={partySize}
                         onChange={(e) => setPartySize(Number(e.target.value))}
-                        className="w-full bg-black border border-white/10 px-3 py-2 text-white focus:outline-none focus:border-[#ff9c00] transition-all text-sm"
+                        className="w-full bg-black border border-white/10 px-3 py-2 text-white focus:outline-none focus:border-[#ff9c00] transition-all text-sm rounded-lg"
                       />
                     </div>
                     <div>
@@ -740,9 +816,14 @@ export default function App() {
                         type="number"
                         value={days}
                         onChange={(e) => setDays(Number(e.target.value))}
-                        className="w-full bg-black border border-white/10 px-3 py-2 text-white focus:outline-none focus:border-[#ff9c00] transition-all text-sm"
+                        className="w-full bg-black border border-white/10 px-3 py-2 text-white focus:outline-none focus:border-[#ff9c00] transition-all text-sm rounded-lg"
                       />
                     </div>
+                  </div>
+
+                  <div className="pt-4 border-t border-white/5 flex items-center justify-between">
+                    <span className="text-[10px] font-bold text-slate-500 uppercase">XP Estimada:</span>
+                    <span className="text-xl font-bold text-[#ff9c00]">{Math.round(totalXPPerMob).toLocaleString()}</span>
                   </div>
                 </div>
               </section>
@@ -1035,7 +1116,7 @@ export default function App() {
                         Composição de <span className="text-[#ff9c00]">XP</span>
                       </h2>
                     </div>
-                    <p className="text-slate-500 text-[10px] font-bold uppercase tracking-[0.2em]">Distribuição por fonte de bônus</p>
+                    <p className="text-slate-500 text-[10px] font-bold uppercase tracking-[0.2em]">Distribuição de XP por dia</p>
                   </div>
                   <div className="flex-1 w-full">
                     <ResponsiveContainer width="100%" height="100%">
@@ -1075,7 +1156,7 @@ export default function App() {
                           }}
                           itemStyle={{ color: '#ff9c00', textTransform: 'uppercase' }}
                           labelStyle={{ marginBottom: '4px', color: '#64748b' }}
-                          formatter={(value: number) => [value.toFixed(2).toLocaleString(), 'XP']}
+                          formatter={(value: number) => [`${value.toLocaleString()} (${formatXP(value)})`, 'XP']}
                         />
 
                         <Bar dataKey="value" radius={[6, 6, 0, 0]} barSize={40}>
@@ -1460,7 +1541,7 @@ function ChartContainer({ title, subtitle, data, dataKey, color, days, formatXP 
               }}
               itemStyle={{ color: '#ff9c00', textTransform: 'uppercase' }}
               labelStyle={{ marginBottom: '4px', color: '#64748b' }}
-              formatter={(value: number) => [value.toLocaleString(), 'XP']}
+              formatter={(value: number) => [`${value.toLocaleString()} (${formatXP(value)})`, 'XP']}
             />
             <Area
               type="linear"
