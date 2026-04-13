@@ -21,7 +21,8 @@ import {
   Trash2,
   ListChecks,
   Repeat,
-  Trophy
+  Trophy,
+  MapPin
 } from 'lucide-react';
 import {
   XAxis,
@@ -58,6 +59,14 @@ interface Quest {
   type: 'daily' | 'daily_solo' | 'repetitive' | 'solo';
   mobsNeeded?: number;
   isFixed?: boolean;
+}
+
+interface MapConfig {
+  id: string;
+  name: string;
+  mobsPerMin: number;
+  activeTime: number;
+  idleTime: number;
 }
 
 export default function App() {
@@ -103,32 +112,91 @@ export default function App() {
     phoenix: false
   });
   const [mobsPerMin, setMobsPerMin] = useState<number>(150);
+  const [mapConfigs, setMapConfigs] = useState<MapConfig[]>([]);
+  const [newMapConfig, setNewMapConfig] = useState({
+    name: '',
+    mobsPerMin: 0,
+    activeTime: 0,
+    idleTime: 0
+  });
+
+  // Load Map Configs
+  useEffect(() => {
+    const saved = localStorage.getItem('aorus_map_configs');
+    if (saved) {
+      try {
+        setMapConfigs(JSON.parse(saved));
+      } catch (e) {
+        setMapConfigs([]);
+      }
+    }
+  }, []);
+
+  // Save Map Configs
+  useEffect(() => {
+    localStorage.setItem('aorus_map_configs', JSON.stringify(mapConfigs));
+  }, [mapConfigs]);
+
+  const calculatedMobsPerMin = useMemo(() => {
+    if (mapConfigs.length === 0) return mobsPerMin;
+
+    const totalMobsInDay = mapConfigs.reduce((acc, map) => {
+      return acc + (map.mobsPerMin * 60 * map.activeTime);
+    }, 0);
+
+    return totalMobsInDay / 1440; // Average over 24 hours
+  }, [mapConfigs, mobsPerMin]);
+
+  const addMapConfig = () => {
+    if (!newMapConfig.name || newMapConfig.mobsPerMin <= 0 || newMapConfig.activeTime <= 0) return;
+
+    const config: MapConfig = {
+      id: Math.random().toString(36).substr(2, 9),
+      ...newMapConfig
+    };
+
+    setMapConfigs([...mapConfigs, config]);
+    setNewMapConfig({ name: '', mobsPerMin: 0, activeTime: 0, idleTime: 0 });
+  };
+
+  const removeMapConfig = (id: string) => {
+    setMapConfigs(mapConfigs.filter(m => m.id !== id));
+  };
+
+  const totalHoursConfigured = useMemo(() => {
+    return mapConfigs.reduce((acc, m) => acc + m.activeTime + m.idleTime, 0);
+  }, [mapConfigs]);
+
   const [days, setDays] = useState<number>(30);
   const [partySize, setPartySize] = useState<number>(6);
 
 
   const getDefaultQuests = (): Quest[] => {
+    const K = 1e3;
+    const M = 1e6;
+    const B = 1e9;
+    const T = 1e12;
     const daily: Quest[] = [
       {
         id: "w52l04pgx",
         name: "Firelands",
-        exp: 5200000000,
+        exp: 5.2 * B,
         active: false,
         type: "daily",
         isFixed: true
       },
       {
         id: "vow255ldw",
-        name: "MISTERY DESERT 3",
-        exp: 5200000000,
+        name: "Mistery Desert 3",
+        exp: 5.2 * B,
         active: false,
         type: "daily",
         isFixed: true
       },
       {
         id: "jfstwvbhl",
-        name: "ICEMINE",
-        exp: 5200000000,
+        name: "Ice mine",
+        exp: 5.2 * B,
         active: false,
         type: "daily",
         isFixed: true
@@ -136,7 +204,15 @@ export default function App() {
       {
         id: "4dx5n1t5v",
         name: "Secret Laboratory",
-        exp: 6500000000,
+        exp: 6.5 * B,
+        active: false,
+        type: "daily",
+        isFixed: true
+      },
+      {
+        id: "4dx5n1xt5v",
+        name: "Secret Laboratory 2",
+        exp: 6.5 * B,
         active: false,
         type: "daily",
         isFixed: true
@@ -147,7 +223,7 @@ export default function App() {
       {
         id: "cn81pnor2",
         name: "Firelands",
-        exp: 250000000,
+        exp: 250 * M,
         active: false,
         type: "solo",
         mobsNeeded: 250,
@@ -155,20 +231,38 @@ export default function App() {
       },
       {
         id: "okb8r13f7",
-        name: "ICEMINE",
-        exp: 180000000,
+        name: "Ice mine",
+        exp: 180 * M,
         active: false,
         type: "solo",
         mobsNeeded: 250,
         isFixed: true
       },
       {
-        id: "1fjfqledi",
-        name: "MISTERY DESERT 3",
-        exp: 180000000,
+        id: "1fjfq2ledi",
+        name: "Mistery Desert 3",
+        exp: 180 * M,
         active: false,
         type: "solo",
         mobsNeeded: 250,
+        isFixed: true
+      },
+      {
+        id: "1f1jfqledi",
+        name: "Secret Laboratory",
+        exp: 200 * M,
+        active: false,
+        type: "solo",
+        mobsNeeded: 350,
+        isFixed: true
+      },
+      {
+        id: "1fj4fqledi",
+        name: "Secret Laboratory 2",
+        exp: 200 * M,
+        active: false,
+        type: "solo",
+        mobsNeeded: 350,
         isFixed: true
       }
     ];
@@ -177,7 +271,7 @@ export default function App() {
       {
         id: "4ckhcmo1a",
         name: "Firelands",
-        exp: 200000000,
+        exp: 200 * M,
         active: false,
         type: "repetitive",
         mobsNeeded: 600,
@@ -185,8 +279,8 @@ export default function App() {
       },
       {
         id: "4ckhxcmo1a",
-        name: "Icemine",
-        exp: 90000000,
+        name: "Ice mine",
+        exp: 90 * M,
         active: false,
         type: "repetitive",
         mobsNeeded: 600,
@@ -195,7 +289,7 @@ export default function App() {
       {
         id: "4ckhacmo1a",
         name: "Mistery Desert 3",
-        exp: 90000000,
+        exp: 90 * M,
         active: false,
         type: "repetitive",
         mobsNeeded: 600,
@@ -203,29 +297,29 @@ export default function App() {
       },
       {
         id: "4ckhascmo1a",
-        name: "Secret Lab",
-        exp: 100000000,
+        name: "Secret Laboratory",
+        exp: 100 * M,
         active: false,
         type: "repetitive",
         mobsNeeded: 800,
         isFixed: true
       },
       {
-        id: "m1nop82t6",
-        name: "Secret Lab",
-        exp: 200000000,
+        id: "4ckhasc2mo1a",
+        name: "Secret Laboratory 2",
+        exp: 100 * M,
         active: false,
-        type: "solo",
-        mobsNeeded: 350,
+        type: "repetitive",
+        mobsNeeded: 800,
         isFixed: true
-      }
+      },
     ];
 
     const dailySolo: Quest[] = [
       {
         id: "7239xavhhhj",
         name: "Shy",
-        exp: 1500000000,
+        exp: 1.5 * B,
         active: false,
         type: "daily_solo",
         isFixed: true
@@ -233,7 +327,7 @@ export default function App() {
       {
         id: "7239xvahhhj",
         name: "Fury",
-        exp: 1500000000,
+        exp: 1.5 * B,
         active: false,
         type: "daily_solo",
         isFixed: true
@@ -241,7 +335,7 @@ export default function App() {
       {
         id: "723s9avhhhj",
         name: "Mokova",
-        exp: 1500000000,
+        exp: 1.5 * B,
         active: false,
         type: "daily_solo",
         isFixed: true
@@ -249,7 +343,7 @@ export default function App() {
       {
         id: "7239xvhhhj",
         name: "Kelvezu",
-        exp: 1500000000,
+        exp: 1.5 * B,
         active: false,
         type: "daily_solo",
         isFixed: true
@@ -257,7 +351,7 @@ export default function App() {
       {
         id: "7239vhhhj",
         name: "Valento",
-        exp: 1500000000,
+        exp: 1.5 * B,
         active: false,
         type: "daily_solo",
         isFixed: true
@@ -265,7 +359,7 @@ export default function App() {
       {
         id: "7239vhh1j",
         name: "Babel",
-        exp: 1500000000,
+        exp: 1.5 * B,
         active: false,
         type: "daily_solo",
         isFixed: true
@@ -273,7 +367,7 @@ export default function App() {
       {
         id: "7239ahh1j",
         name: "Aorus God",
-        exp: 1500000000,
+        exp: 1.5 * B,
         active: false,
         type: "daily_solo",
         isFixed: true
@@ -281,7 +375,7 @@ export default function App() {
       {
         id: "ysk6k22wr",
         name: "Hells Gate",
-        exp: 2000000000,
+        exp: 2 * B,
         active: false,
         type: "daily_solo",
         isFixed: true
@@ -289,7 +383,39 @@ export default function App() {
       {
         id: "61xn4gfp9",
         name: "TULLA",
-        exp: 1500000000,
+        exp: 1.5 * B,
+        active: false,
+        type: "daily_solo",
+        isFixed: true
+      },
+      {
+        id: "x61xn4gfp9",
+        name: "BG 1 Vitória",
+        exp: 2.4 * B,
+        active: false,
+        type: "daily_solo",
+        isFixed: true
+      },
+      {
+        id: "x61xn4gfp9x",
+        name: "BG 1 Derrota",
+        exp: 1.2 * B,
+        active: false,
+        type: "daily_solo",
+        isFixed: true
+      },
+      {
+        id: "x61xn4gfp9x2",
+        name: "BG 2 Vitória",
+        exp: 2.4 * B,
+        active: false,
+        type: "daily_solo",
+        isFixed: true
+      },
+      {
+        id: "x61xn4xgfp9x2",
+        name: "BG 2 Derrota",
+        exp: 1.2 * B,
         active: false,
         type: "daily_solo",
         isFixed: true
@@ -317,7 +443,7 @@ export default function App() {
         const parsed: Quest[] = JSON.parse(saved);
         const existingIds = new Set(parsed.map(q => q.id));
         const missingDefaults = defaults.filter(d => !existingIds.has(d.id));
-        
+
         if (missingDefaults.length > 0) {
           setQuests([...parsed, ...missingDefaults]);
         } else {
@@ -390,6 +516,7 @@ export default function App() {
   const chartData = useMemo(() => {
     const minPerDay = 1440;
     const data = [];
+    const currentMobsPerMin = calculatedMobsPerMin;
 
     // Calculate daily quest XP (Group)
     const dailyQuestsXP = quests
@@ -405,19 +532,18 @@ export default function App() {
     const activeRepetitiveQuests = quests.filter(q => q.active && q.type === 'repetitive');
     const totalRepetitiveMobs = activeRepetitiveQuests.reduce((acc, q) => acc + (q.mobsNeeded || 0), 0);
     const totalRepetitiveXP = activeRepetitiveQuests.reduce((acc, q) => acc + q.exp, 0);
-    const repetitiveQuestsXPPerMin = totalRepetitiveMobs > 0 ? (mobsPerMin / totalRepetitiveMobs) * totalRepetitiveXP : 0;
+    const repetitiveQuestsXPPerMin = totalRepetitiveMobs > 0 ? (currentMobsPerMin / totalRepetitiveMobs) * totalRepetitiveXP : 0;
 
     // Calculate solo repetitive quest XP per minute
     const activeSoloQuests = quests.filter(q => q.active && q.type === 'solo');
     const totalSoloMobs = activeSoloQuests.reduce((acc, q) => acc + (q.mobsNeeded || 0), 0);
     const totalSoloXP = activeSoloQuests.reduce((acc, q) => acc + q.exp, 0);
-    const soloMobsPerMin = mobsPerMin / (partySize || 1);
+    const soloMobsPerMin = currentMobsPerMin / (partySize || 1);
     const soloQuestsXPPerMin = totalSoloMobs > 0 ? (soloMobsPerMin / totalSoloMobs) * totalSoloXP : 0;
 
     for (let i = 1; i <= days; i++) {
       const mins = minPerDay * i;
-      const baseTotal = baseXP * mobsPerMin * mins;
-      const rawTotal = xpRecebida * mobsPerMin * mins;
+      const baseTotal = baseXP * currentMobsPerMin * mins;
 
       const xp100Val = sBoosts.xp100 ? baseXP : 0;
       const xp120Val = sBoosts.xp120 ? baseXP * 1.2 : 0;
@@ -432,19 +558,19 @@ export default function App() {
       const currentRepetitiveXP = Math.floor(repetitiveQuestsXPPerMin * mins);
       const currentSoloXP = Math.floor(soloQuestsXPPerMin * mins);
 
-      const totalAccumulated = Math.floor(totalXPPerMob * mobsPerMin * mins) + currentDailyXP + currentDailySoloXP + currentRepetitiveXP + currentSoloXP;
+      const totalAccumulated = Math.floor(totalXPPerMob * currentMobsPerMin * mins) + currentDailyXP + currentDailySoloXP + currentRepetitiveXP + currentSoloXP;
 
       data.push({
         day: `Dia ${i}`,
         total: totalAccumulated,
         base: Math.floor(baseTotal),
-        xp100: Math.floor((baseXP + xp100Val) * mobsPerMin * mins),
-        xp120: Math.floor((baseXP + xp120Val) * mobsPerMin * mins),
-        comp: Math.floor((baseXP + compVal) * mobsPerMin * mins),
-        pk: Math.floor((baseXP + pkVal) * mobsPerMin * mins),
-        relic: Math.floor((baseXP + relicVal) * mobsPerMin * mins),
-        vip: Math.floor((baseXP + vipVal) * mobsPerMin * mins),
-        phoenix: Math.floor((baseXP + phoenixVal) * mobsPerMin * mins),
+        xp100: Math.floor((baseXP + xp100Val) * currentMobsPerMin * mins),
+        xp120: Math.floor((baseXP + xp120Val) * currentMobsPerMin * mins),
+        comp: Math.floor((baseXP + compVal) * currentMobsPerMin * mins),
+        pk: Math.floor((baseXP + pkVal) * currentMobsPerMin * mins),
+        relic: Math.floor((baseXP + relicVal) * currentMobsPerMin * mins),
+        vip: Math.floor((baseXP + vipVal) * currentMobsPerMin * mins),
+        phoenix: Math.floor((baseXP + phoenixVal) * currentMobsPerMin * mins),
         dailies: Math.floor(baseTotal + currentDailyXP),
         dailiesSolo: Math.floor(baseTotal + currentDailySoloXP),
         repetitives: Math.floor(baseTotal + currentRepetitiveXP),
@@ -452,7 +578,7 @@ export default function App() {
       });
     }
     return data;
-  }, [baseXP, sBoosts, totalXPPerMob, mobsPerMin, days, quests, partySize]);
+  }, [baseXP, sBoosts, totalXPPerMob, calculatedMobsPerMin, days, quests, partySize]);
 
   const formatXP = (n: number) => {
     if (n >= 1e12) return (n / 1e12).toFixed(2) + "T";
@@ -464,19 +590,20 @@ export default function App() {
 
   const compositionData = useMemo(() => {
     const minPerDay = 1440;
-    const base = baseXP * mobsPerMin * minPerDay;
-    const xp100 = sBoosts.xp100 ? baseXP * mobsPerMin * minPerDay : 0;
-    const xp120 = sBoosts.xp120 ? baseXP * 1.2 * mobsPerMin * minPerDay : 0;
-    const comp = sBoosts.comp ? baseXP * (10 / 100) * mobsPerMin * minPerDay : 0;
-    const pk = sBoosts.pk ? baseXP * (15 / 100) * mobsPerMin * minPerDay : 0;
-    const relic = sBoosts.relic ? baseXP * (15 / 100) * mobsPerMin * minPerDay : 0;
-    const vip = sBoosts.vip ? baseXP * (10 / 100) * mobsPerMin * minPerDay : 0;
-    const phoenix = sBoosts.phoenix ? baseXP * (20 / 100) * mobsPerMin * minPerDay : 0;
+    const currentMobsPerMin = calculatedMobsPerMin;
+    const base = baseXP * currentMobsPerMin * minPerDay;
+    const xp100 = sBoosts.xp100 ? baseXP * currentMobsPerMin * minPerDay : 0;
+    const xp120 = sBoosts.xp120 ? baseXP * 1.2 * currentMobsPerMin * minPerDay : 0;
+    const comp = sBoosts.comp ? baseXP * (10 / 100) * currentMobsPerMin * minPerDay : 0;
+    const pk = sBoosts.pk ? baseXP * (15 / 100) * currentMobsPerMin * minPerDay : 0;
+    const relic = sBoosts.relic ? baseXP * (15 / 100) * currentMobsPerMin * minPerDay : 0;
+    const vip = sBoosts.vip ? baseXP * (10 / 100) * currentMobsPerMin * minPerDay : 0;
+    const phoenix = sBoosts.phoenix ? baseXP * (20 / 100) * currentMobsPerMin * minPerDay : 0;
 
     const activeRepetitiveQuests = quests.filter(q => q.active && q.type === 'repetitive');
     const totalRepetitiveMobs = activeRepetitiveQuests.reduce((acc, q) => acc + (q.mobsNeeded || 0), 0);
     const totalRepetitiveXP = activeRepetitiveQuests.reduce((acc, q) => acc + q.exp, 0);
-    const repetitiveQuestsXPPerDay = totalRepetitiveMobs > 0 ? (mobsPerMin / totalRepetitiveMobs) * totalRepetitiveXP * minPerDay : 0;
+    const repetitiveQuestsXPPerDay = totalRepetitiveMobs > 0 ? (currentMobsPerMin / totalRepetitiveMobs) * totalRepetitiveXP * minPerDay : 0;
 
     const dailyQuestsXP = quests
       .filter(q => q.active && q.type === 'daily')
@@ -489,7 +616,7 @@ export default function App() {
     const activeSoloQuests = quests.filter(q => q.active && q.type === 'solo');
     const totalSoloMobs = activeSoloQuests.reduce((acc, q) => acc + (q.mobsNeeded || 0), 0);
     const totalSoloXP = activeSoloQuests.reduce((acc, q) => acc + q.exp, 0);
-    const soloMobsPerMin = mobsPerMin / (partySize || 1);
+    const soloMobsPerMin = currentMobsPerMin / (partySize || 1);
     const soloQuestsXPPerDay = totalSoloMobs > 0 ? (soloMobsPerMin / totalSoloMobs) * totalSoloXP * minPerDay : 0;
 
     return [
@@ -506,18 +633,19 @@ export default function App() {
       ...(repetitiveQuestsXPPerDay ? [{ name: 'Repetitivas (G)', value: repetitiveQuestsXPPerDay, color: '#a855f7' }] : []),
       ...(soloQuestsXPPerDay ? [{ name: 'Repetitivas (S)', value: soloQuestsXPPerDay, color: '#ec4899' }] : []),
     ];
-  }, [baseXP, sBoosts, quests, mobsPerMin, partySize]);
+  }, [baseXP, sBoosts, quests, calculatedMobsPerMin, partySize]);
 
   const currentRate = useMemo(() => {
+    const currentMobsPerMin = calculatedMobsPerMin;
     const activeRepetitiveQuests = quests.filter(q => q.active && q.type === 'repetitive');
     const totalRepetitiveMobs = activeRepetitiveQuests.reduce((acc, q) => acc + (q.mobsNeeded || 0), 0);
     const totalRepetitiveXP = activeRepetitiveQuests.reduce((acc, q) => acc + q.exp, 0);
-    const repetitiveXP = totalRepetitiveMobs > 0 ? (mobsPerMin / totalRepetitiveMobs) * totalRepetitiveXP : 0;
+    const repetitiveXP = totalRepetitiveMobs > 0 ? (currentMobsPerMin / totalRepetitiveMobs) * totalRepetitiveXP : 0;
 
     const activeSoloQuests = quests.filter(q => q.active && q.type === 'solo');
     const totalSoloMobs = activeSoloQuests.reduce((acc, q) => acc + (q.mobsNeeded || 0), 0);
     const totalSoloXP = activeSoloQuests.reduce((acc, q) => acc + q.exp, 0);
-    const soloMobsPerMin = mobsPerMin / (partySize || 1);
+    const soloMobsPerMin = currentMobsPerMin / (partySize || 1);
     const soloXP = totalSoloMobs > 0 ? (soloMobsPerMin / totalSoloMobs) * totalSoloXP : 0;
 
     const dailyXP = quests
@@ -528,8 +656,8 @@ export default function App() {
       .filter(q => q.active && q.type === 'daily_solo')
       .reduce((acc, q) => acc + q.exp, 0) / 1440;
 
-    return (totalXPPerMob * mobsPerMin) + repetitiveXP + soloXP + dailyXP + dailySoloXP;
-  }, [totalXPPerMob, mobsPerMin, quests, partySize]);
+    return (totalXPPerMob * currentMobsPerMin) + repetitiveXP + soloXP + dailyXP + dailySoloXP;
+  }, [totalXPPerMob, calculatedMobsPerMin, quests, partySize]);
 
   const toggleBoost = (type: 'u' | 's', boost: keyof BonusState) => {
     const setter = type === 'u' ? setUBoosts : setSBoosts;
@@ -638,7 +766,110 @@ export default function App() {
               />
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              {/* Configuração de Mapas */}
+              <section
+                className="aorus-card p-8 rounded-3xl border-l-2 border-[#ff9c00] relative overflow-hidden"
+              >
+                <div className="flex items-center gap-2 mb-2">
+                  <Target size={20} className="text-[#ff9c00]" />
+                  <h2 className="text-2xl font-black text-white uppercase italic tracking-tight">
+                    Configuração de  <span className="text-[#ff9c00]">Mapas</span>
+                  </h2>
+                </div>
+
+                <div className="space-y-4">
+                  <div className="bg-white/5 border border-white/10 p-3 rounded-xl flex gap-3 items-start">
+                    <Info size={16} className="text-[#ff9c00] shrink-0 mt-0.5" />
+                    <p className="text-[10px] leading-relaxed text-slate-400">
+                      <strong className="text-white block mb-1">COMO FUNCIONA A CONFIGURAÇÃO DO MAPA?</strong>
+                      Cadastre os mapas onde você caça, informando os mobs/min e o tempo gasto. O sistema calculará uma média real baseada em um ciclo de 24 horas, considerando o tempo ocioso.
+                    </p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1 ml-1">Nome do mapa</label>
+                      <input
+                        type="text"
+                        placeholder="Nome do Mapa"
+                        value={newMapConfig.name}
+                        onChange={(e) => setNewMapConfig({ ...newMapConfig, name: e.target.value })}
+                        className="w-full bg-black border border-white/10 px-3 py-2 text-white focus:outline-none focus:border-[#ff9c00] transition-all text-sm rounded-lg"
+                      />
+                    </div>
+                    <div className="grid grid-cols-3 gap-2">
+                      <div>
+                        <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1 ml-1">Mobs/Min</label>
+                        <input
+                          type="number"
+                          placeholder="Mobs/Min"
+                          value={newMapConfig.mobsPerMin || ''}
+                          onChange={(e) => setNewMapConfig({ ...newMapConfig, mobsPerMin: Number(e.target.value) })}
+                          className="w-full bg-black border border-white/10 px-3 py-2 text-white focus:outline-none focus:border-[#ff9c00] transition-all text-sm rounded-lg"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1 ml-1">Horas Ativo</label>
+                        <input
+                          type="number"
+                          placeholder="Horas Ativo"
+                          value={newMapConfig.activeTime || ''}
+                          onChange={(e) => setNewMapConfig({ ...newMapConfig, activeTime: Number(e.target.value) })}
+                          className="w-full bg-black border border-white/10 px-3 py-2 text-white focus:outline-none focus:border-[#ff9c00] transition-all text-sm rounded-lg"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1 ml-1">Horas Ocioso</label>
+                        <input
+                          type="number"
+                          placeholder="Horas Ocioso"
+                          value={newMapConfig.idleTime || ''}
+                          onChange={(e) => setNewMapConfig({ ...newMapConfig, idleTime: Number(e.target.value) })}
+                          className="w-full bg-black border border-white/10 px-3 py-2 text-white focus:outline-none focus:border-[#ff9c00] transition-all text-sm rounded-lg"
+                        />
+                      </div>
+                    </div>
+                    <button
+                      onClick={addMapConfig}
+                      className="rounded-xl w-full py-2 bg-[#ff9c00]/10 border border-[#ff9c00]/20 text-[#ff9c00] text-[10px] font-black uppercase tracking-widest hover:bg-[#ff9c00] hover:text-white transition-all flex items-center justify-center gap-2"
+                    >
+                      <Plus size={14} /> Adicionar Mapa
+                    </button>
+                  </div>
+
+                  <div className="space-y-1 max-h-[200px] overflow-y-auto pr-2 custom-scrollbar">
+                    {mapConfigs.map(m => (
+                      <div key={m.id} className="flex items-center justify-between p-3 bg-white/5 border border-white/5 group rounded-lg">
+                        <div>
+                          <p className="text-[10px] font-bold text-white uppercase">{m.name}</p>
+                          <p className="text-[8px] text-slate-500 uppercase">
+                            {m.mobsPerMin} mobs/min • {m.activeTime}h Ativo • {m.idleTime}h Ocioso
+                          </p>
+                        </div>
+                        <button onClick={() => removeMapConfig(m.id)} className="text-red-500 hover:text-red-400 transition-all opacity-0 group-hover:opacity-100">
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="pt-4 border-t border-white/5 flex flex-col gap-1">
+                    <div className="flex justify-between items-center">
+                      <span className="text-[10px] font-bold text-slate-500 uppercase">Total de Horas:</span>
+                      <span className={`text-xs font-bold ${totalHoursConfigured > 24 ? 'text-red-500' : 'text-emerald-500'}`}>
+                        {totalHoursConfigured}h / 24h
+                      </span>
+                    </div>
+                    {totalHoursConfigured > 24 && (
+                      <p className="text-[8px] text-red-500 uppercase font-bold flex items-center gap-1">
+                        <AlertTriangle size={10} /> O total de horas excede 24h!
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </section>
+
               {/* Cálculo de Base */}
               <section
                 className="aorus-card p-8 rounded-3xl border-l-2 border-[#ff9c00] relative overflow-hidden"
@@ -664,8 +895,7 @@ export default function App() {
                       type="number"
                       value={xpRecebida}
                       onChange={(e) => setXpRecebida(Number(e.target.value))}
-                      className="w-full bg-black border border-white/10 px-4 py-3 text-white focus:outline-none focus:border-[#ff9c00] transition-all text-lg"
-                    />
+                      className="w-full bg-black border border-white/10 px-3 py-2 text-white focus:outline-none focus:border-[#ff9c00] transition-all text-sm rounded-lg" />
                   </div>
 
                   <div className="space-y-1">
@@ -746,7 +976,7 @@ export default function App() {
                       type="number"
                       value={baseXP}
                       onChange={(e) => setBaseXP(Number(e.target.value))}
-                      className="w-full bg-black border border-white/10 px-4 py-3 text-white focus:outline-none focus:border-[#ff9c00] transition-all text-lg"
+                      className="w-full bg-black border border-white/10 px-3 py-2 text-white focus:outline-none focus:border-[#ff9c00] transition-all text-sm rounded-lg"
                     />
                   </div>
 
@@ -798,18 +1028,7 @@ export default function App() {
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-3 gap-4 pt-4 border-t border-white/5">
-                    <div>
-                      <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1 flex items-center gap-1">
-                        <Sword size={10} /> Mobs/Min
-                      </label>
-                      <input
-                        type="number"
-                        value={mobsPerMin}
-                        onChange={(e) => setMobsPerMin(Number(e.target.value))}
-                        className="w-full bg-black border border-white/10 px-3 py-2 text-white focus:outline-none focus:border-[#ff9c00] transition-all text-sm rounded-lg"
-                      />
-                    </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t border-white/5">
                     <div>
                       <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1 flex items-center gap-1">
                         <Gem size={10} /> Players
@@ -832,6 +1051,11 @@ export default function App() {
                         className="w-full bg-black border border-white/10 px-3 py-2 text-white focus:outline-none focus:border-[#ff9c00] transition-all text-sm rounded-lg"
                       />
                     </div>
+                  </div>
+
+                  <div className="pt-4 border-t border-white/5 flex items-center justify-between">
+                    <span className="text-[10px] font-bold text-slate-500 uppercase">Mobs/Min (Média):</span>
+                    <span className="text-xl font-bold text-[#ff9c00]">{calculatedMobsPerMin.toFixed(1)}</span>
                   </div>
 
                   <div className="pt-4 border-t border-white/5 flex items-center justify-between">
@@ -863,14 +1087,14 @@ export default function App() {
                         placeholder="Nome da Quest"
                         value={newQuest.type === 'daily' ? newQuest.name : ''}
                         onChange={(e) => setNewQuest({ ...newQuest, name: e.target.value, type: 'daily' })}
-                        className="w-full bg-black border border-white/10 px-4 py-2 text-white focus:outline-none focus:border-[#ff9c00] transition-all text-xs mb-2"
+                        className="w-full bg-black border border-white/10 px-3 py-2 text-white focus:outline-none focus:border-[#ff9c00] transition-all text-sm rounded-lg text-xs mb-2"
                       />
                       <input
                         type="number"
                         placeholder="XP Recompensa"
                         value={newQuest.type === 'daily' ? (newQuest.exp || '') : ''}
                         onChange={(e) => setNewQuest({ ...newQuest, exp: Number(e.target.value), type: 'daily' })}
-                        className="w-full bg-black border border-white/10 px-4 py-2 text-white focus:outline-none focus:border-[#ff9c00] transition-all text-xs"
+                        className="w-full bg-black border border-white/10 px-3 py-2 text-white focus:outline-none focus:border-[#ff9c00] transition-all text-sm rounded-lg"
                       />
                     </div>
                     <button
@@ -924,14 +1148,14 @@ export default function App() {
                         placeholder="Nome da Quest"
                         value={newQuest.type === 'daily_solo' ? newQuest.name : ''}
                         onChange={(e) => setNewQuest({ ...newQuest, name: e.target.value, type: 'daily_solo' })}
-                        className="w-full bg-black border border-white/10 px-4 py-2 text-white focus:outline-none focus:border-[#ff9c00] transition-all text-xs mb-2"
+                        className="w-full bg-black border border-white/10 px-3 py-2 text-white focus:outline-none focus:border-[#ff9c00] transition-all text-sm rounded-lg text-xs mb-2"
                       />
                       <input
                         type="number"
                         placeholder="XP Recompensa"
                         value={newQuest.type === 'daily_solo' ? (newQuest.exp || '') : ''}
                         onChange={(e) => setNewQuest({ ...newQuest, exp: Number(e.target.value), type: 'daily_solo' })}
-                        className="w-full bg-black border border-white/10 px-4 py-2 text-white focus:outline-none focus:border-[#ff9c00] transition-all text-xs"
+                        className="w-full bg-black border border-white/10 px-3 py-2 text-white focus:outline-none focus:border-[#ff9c00] transition-all text-sm rounded-lg"
                       />
                     </div>
                     <button
@@ -984,7 +1208,7 @@ export default function App() {
                       placeholder="Nome da Quest"
                       value={newQuest.type === 'repetitive' ? newQuest.name : ''}
                       onChange={(e) => setNewQuest({ ...newQuest, name: e.target.value, type: 'repetitive' })}
-                      className="w-full bg-black border border-white/10 px-4 py-2 text-white focus:outline-none focus:border-[#ff9c00] transition-all text-xs"
+                      className="w-full bg-black border border-white/10 px-3 py-2 text-white focus:outline-none focus:border-[#ff9c00] transition-all text-sm rounded-lg"
                     />
                     <div className="grid grid-cols-2 gap-2">
                       <input
@@ -992,14 +1216,14 @@ export default function App() {
                         placeholder="XP Recompensa"
                         value={newQuest.type === 'repetitive' ? (newQuest.exp || '') : ''}
                         onChange={(e) => setNewQuest({ ...newQuest, exp: Number(e.target.value), type: 'repetitive' })}
-                        className="w-full bg-black border border-white/10 px-4 py-2 text-white focus:outline-none focus:border-[#ff9c00] transition-all text-xs"
+                        className="w-full bg-black border border-white/10 px-3 py-2 text-white focus:outline-none focus:border-[#ff9c00] transition-all text-sm rounded-lg"
                       />
                       <input
                         type="number"
                         placeholder="Mobs Necessários"
                         value={newQuest.type === 'repetitive' ? (newQuest.mobsNeeded || '') : ''}
                         onChange={(e) => setNewQuest({ ...newQuest, mobsNeeded: Number(e.target.value), type: 'repetitive' })}
-                        className="w-full bg-black border border-white/10 px-4 py-2 text-white focus:outline-none focus:border-[#ff9c00] transition-all text-xs"
+                        className="w-full bg-black border border-white/10 px-3 py-2 text-white focus:outline-none focus:border-[#ff9c00] transition-all text-sm rounded-lg"
                       />
                     </div>
                     <button
@@ -1055,7 +1279,7 @@ export default function App() {
                       placeholder="Nome da Quest"
                       value={newQuest.type === 'solo' ? newQuest.name : ''}
                       onChange={(e) => setNewQuest({ ...newQuest, name: e.target.value, type: 'solo' })}
-                      className="w-full bg-black border border-white/10 px-4 py-2 text-white focus:outline-none focus:border-[#ff9c00] transition-all text-xs"
+                      className="w-full bg-black border border-white/10 px-3 py-2 text-white focus:outline-none focus:border-[#ff9c00] transition-all text-sm rounded-lg"
                     />
                     <div className="grid grid-cols-2 gap-2">
                       <input
@@ -1063,14 +1287,14 @@ export default function App() {
                         placeholder="XP Recompensa"
                         value={newQuest.type === 'solo' ? (newQuest.exp || '') : ''}
                         onChange={(e) => setNewQuest({ ...newQuest, exp: Number(e.target.value), type: 'solo' })}
-                        className="w-full bg-black border border-white/10 px-4 py-2 text-white focus:outline-none focus:border-[#ff9c00] transition-all text-xs"
+                        className="w-full bg-black border border-white/10 px-3 py-2 text-white focus:outline-none focus:border-[#ff9c00] transition-all text-sm rounded-lg"
                       />
                       <input
                         type="number"
                         placeholder="Mobs Necessários"
                         value={newQuest.type === 'solo' ? (newQuest.mobsNeeded || '') : ''}
                         onChange={(e) => setNewQuest({ ...newQuest, mobsNeeded: Number(e.target.value), type: 'solo' })}
-                        className="w-full bg-black border border-white/10 px-4 py-2 text-white focus:outline-none focus:border-[#ff9c00] transition-all text-xs"
+                        className="w-full bg-black border border-white/10 px-3 py-2 text-white focus:outline-none focus:border-[#ff9c00] transition-all text-sm rounded-lg"
                       />
                     </div>
                     <button
