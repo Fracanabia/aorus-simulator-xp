@@ -4,7 +4,6 @@ import React, { useState, useMemo, useEffect } from 'react';
 import {
   Calculator,
   TrendingUp,
-  Target,
   Zap,
   Sword,
   Gem,
@@ -65,6 +64,7 @@ interface MapConfig {
   id: string;
   name: string;
   mobsPerMin: number;
+  expPerMob: number;
   activeTime: number;
   idleTime: number;
 }
@@ -113,9 +113,12 @@ export default function App() {
   });
   const [mobsPerMin, setMobsPerMin] = useState<number>(150);
   const [mapConfigs, setMapConfigs] = useState<MapConfig[]>([]);
+  const [editingMapId, setEditingMapId] = useState<string | null>(null);
+  const [mapError, setMapError] = useState<string | null>(null);
   const [newMapConfig, setNewMapConfig] = useState({
     name: '',
     mobsPerMin: 0,
+    expPerMob: 0,
     activeTime: 0,
     idleTime: 0
   });
@@ -137,35 +140,100 @@ export default function App() {
     localStorage.setItem('aorus_map_configs', JSON.stringify(mapConfigs));
   }, [mapConfigs]);
 
-  const calculatedMobsPerMin = useMemo(() => {
-    if (mapConfigs.length === 0) return mobsPerMin;
+  const mapStats = useMemo(() => {
+    if (mapConfigs.length === 0) {
+      return {
+        avgMobsPerMin: mobsPerMin,
+        avgXPPerMob: xpRecebida,
+        totalActiveTime: 0,
+        totalIdleTime: 0,
+        totalHours: 0
+      };
+    }
 
     const totalMobsInDay = mapConfigs.reduce((acc, map) => {
       return acc + (map.mobsPerMin * 60 * map.activeTime);
     }, 0);
 
-    return totalMobsInDay / 1440; // Average over 24 hours
-  }, [mapConfigs, mobsPerMin]);
+    const totalXPInDay = mapConfigs.reduce((acc, map) => {
+      return acc + (map.expPerMob * map.mobsPerMin * 60 * map.activeTime);
+    }, 0);
+
+    const totalActiveTime = mapConfigs.reduce((acc, m) => acc + m.activeTime, 0);
+    const totalIdleTime = mapConfigs.reduce((acc, m) => acc + m.idleTime, 0);
+
+    return {
+      avgMobsPerMin: totalMobsInDay / 1440,
+      avgXPPerMob: totalMobsInDay > 0 ? totalXPInDay / totalMobsInDay : 0,
+      totalActiveTime,
+      totalIdleTime,
+      totalHours: totalActiveTime + totalIdleTime
+    };
+  }, [mapConfigs, mobsPerMin, xpRecebida]);
+
+  const calculatedMobsPerMin = mapStats.avgMobsPerMin;
+  const calculatedXPPerMob = mapStats.avgXPPerMob;
+
+  // Sync xpRecebida and baseXP with map average
+  useEffect(() => {
+    if (mapConfigs.length > 0 && calculatedXPPerMob > 0) {
+      const newXpRecebida = Math.round(calculatedXPPerMob);
+      setXpRecebida(newXpRecebida);
+      
+      // Also update the base calculation automatically
+      const rawBase = calculateBase(newXpRecebida, uBoosts);
+      setBaseCalculada(Math.ceil(rawBase));
+      setBaseXP(rawBase);
+    }
+  }, [calculatedXPPerMob, mapConfigs.length, uBoosts]);
 
   const addMapConfig = () => {
     if (!newMapConfig.name || newMapConfig.mobsPerMin <= 0 || newMapConfig.activeTime <= 0) return;
 
-    const config: MapConfig = {
-      id: Math.random().toString(36).substr(2, 9),
-      ...newMapConfig
-    };
+    const otherMapsHours = mapConfigs
+      .filter(m => m.id !== editingMapId)
+      .reduce((acc, m) => acc + m.activeTime + m.idleTime, 0);
 
-    setMapConfigs([...mapConfigs, config]);
-    setNewMapConfig({ name: '', mobsPerMin: 0, activeTime: 0, idleTime: 0 });
+    if (otherMapsHours + newMapConfig.activeTime + newMapConfig.idleTime > 24) {
+      setMapError("O total de horas (Ativo + Ocioso) não pode ultrapassar 24 horas!");
+      return;
+    }
+
+    setMapError(null);
+    if (editingMapId) {
+      setMapConfigs(mapConfigs.map(m => m.id === editingMapId ? { ...newMapConfig, id: editingMapId } : m));
+      setEditingMapId(null);
+    } else {
+      const config: MapConfig = {
+        id: Math.random().toString(36).substr(2, 9),
+        ...newMapConfig
+      };
+      setMapConfigs([...mapConfigs, config]);
+    }
+
+    setNewMapConfig({ name: '', mobsPerMin: 0, expPerMob: 0, activeTime: 0, idleTime: 0 });
+  };
+
+  const startEditMap = (map: MapConfig) => {
+    setEditingMapId(map.id);
+    setNewMapConfig({
+      name: map.name,
+      mobsPerMin: map.mobsPerMin,
+      expPerMob: map.expPerMob,
+      activeTime: map.activeTime,
+      idleTime: map.idleTime
+    });
   };
 
   const removeMapConfig = (id: string) => {
     setMapConfigs(mapConfigs.filter(m => m.id !== id));
+    if (editingMapId === id) {
+      setEditingMapId(null);
+      setNewMapConfig({ name: '', mobsPerMin: 0, expPerMob: 0, activeTime: 0, idleTime: 0 });
+    }
   };
 
-  const totalHoursConfigured = useMemo(() => {
-    return mapConfigs.reduce((acc, m) => acc + m.activeTime + m.idleTime, 0);
-  }, [mapConfigs]);
+  const totalHoursConfigured = mapStats.totalHours;
 
   const [days, setDays] = useState<number>(30);
   const [partySize, setPartySize] = useState<number>(6);
@@ -430,8 +498,8 @@ export default function App() {
     ];
   };
 
-  // 👇 inicia vazio
   const [quests, setQuests] = useState<Quest[]>([]);
+  const [editingQuestId, setEditingQuestId] = useState<string | null>(null);
 
   // 👇 carrega do localStorage no client
   useEffect(() => {
@@ -457,6 +525,29 @@ export default function App() {
     }
   }, []);
 
+  // Load XP States
+  useEffect(() => {
+    const saved = localStorage.getItem('aorus_xp_states');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (parsed.xpRecebida) setXpRecebida(parsed.xpRecebida);
+        if (parsed.uBoosts) setUBoosts(parsed.uBoosts);
+        if (parsed.baseXP) setBaseXP(parsed.baseXP);
+        if (parsed.sBoosts) setSBoosts(parsed.sBoosts);
+        if (parsed.partySize) setPartySize(parsed.partySize);
+        if (parsed.days) setDays(parsed.days);
+
+        // Recalculate baseCalculada if needed
+        if (parsed.xpRecebida && parsed.uBoosts) {
+          setBaseCalculada(Math.ceil(calculateBase(parsed.xpRecebida, parsed.uBoosts)));
+        }
+      } catch (e) {
+        console.error("Error loading XP states", e);
+      }
+    }
+  }, []);
+
   const [newQuest, setNewQuest] = useState({
     name: '',
     exp: 0,
@@ -468,6 +559,19 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem('aorus_quests', JSON.stringify(quests));
   }, [quests]);
+
+  // Save XP States
+  useEffect(() => {
+    const states = {
+      xpRecebida,
+      uBoosts,
+      baseXP,
+      sBoosts,
+      partySize,
+      days
+    };
+    localStorage.setItem('aorus_xp_states', JSON.stringify(states));
+  }, [xpRecebida, uBoosts, baseXP, sBoosts, partySize, days]);
 
   // Header State
   const [secondsLeft, setSecondsLeft] = useState(300); // 5 minutes sync
@@ -674,21 +778,44 @@ export default function App() {
     if (!newQuest.name || newQuest.exp <= 0) return;
     if ((newQuest.type === 'repetitive' || newQuest.type === 'solo') && newQuest.mobsNeeded <= 0) return;
 
-    const quest: Quest = {
-      id: Math.random().toString(36).substr(2, 9),
-      name: newQuest.name,
-      exp: newQuest.exp,
-      active: true,
-      type: newQuest.type,
-      mobsNeeded: (newQuest.type === 'repetitive' || newQuest.type === 'solo') ? newQuest.mobsNeeded : undefined
-    };
-
-    setQuests([...quests, quest]);
+    if (editingQuestId) {
+      setQuests(quests.map(q => q.id === editingQuestId ? {
+        ...q,
+        name: newQuest.name,
+        exp: newQuest.exp,
+        mobsNeeded: (newQuest.type === 'repetitive' || newQuest.type === 'solo') ? newQuest.mobsNeeded : undefined
+      } : q));
+      setEditingQuestId(null);
+    } else {
+      const quest: Quest = {
+        id: Math.random().toString(36).substr(2, 9),
+        name: newQuest.name,
+        exp: newQuest.exp,
+        active: true,
+        type: newQuest.type,
+        mobsNeeded: (newQuest.type === 'repetitive' || newQuest.type === 'solo') ? newQuest.mobsNeeded : undefined
+      };
+      setQuests([...quests, quest]);
+    }
     setNewQuest({ name: '', exp: 0, mobsNeeded: 0, type: newQuest.type });
+  };
+
+  const startEditQuest = (quest: Quest) => {
+    setEditingQuestId(quest.id);
+    setNewQuest({
+      name: quest.name,
+      exp: quest.exp,
+      mobsNeeded: quest.mobsNeeded || 0,
+      type: quest.type
+    });
   };
 
   const removeQuest = (id: string) => {
     setQuests(quests.filter(q => q.id !== id || q.isFixed));
+    if (editingQuestId === id) {
+      setEditingQuestId(null);
+      setNewQuest({ name: '', exp: 0, mobsNeeded: 0, type: newQuest.type });
+    }
   };
 
   const toggleQuest = (id: string) => {
@@ -769,17 +896,17 @@ export default function App() {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               {/* Configuração de Mapas */}
               <section
-                className="aorus-card p-8 rounded-3xl border-l-2 border-[#ff9c00] relative overflow-hidden"
+                className="aorus-card p-8 rounded-lg border-l-2 border-[#ff9c00] relative overflow-hidden"
               >
                 <div className="flex items-center gap-2 mb-2">
-                  <Target size={20} className="text-[#ff9c00]" />
+                  <MapPin size={20} className="text-[#ff9c00]" />
                   <h2 className="text-2xl font-black text-white uppercase italic tracking-tight">
                     Configuração de  <span className="text-[#ff9c00]">Mapas</span>
                   </h2>
                 </div>
 
                 <div className="space-y-4">
-                  <div className="bg-white/5 border border-white/10 p-3 rounded-xl flex gap-3 items-start">
+                  <div className="bg-white/5 border border-white/10 p-3 rounded-lg flex gap-3 items-start">
                     <Info size={16} className="text-[#ff9c00] shrink-0 mt-0.5" />
                     <p className="text-[10px] leading-relaxed text-slate-400">
                       <strong className="text-white block mb-1">COMO FUNCIONA A CONFIGURAÇÃO DO MAPA?</strong>
@@ -787,92 +914,163 @@ export default function App() {
                     </p>
                   </div>
 
-                  <div className="space-y-2">
-                    <div>
-                      <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1 ml-1">Nome do mapa</label>
-                      <input
-                        type="text"
-                        placeholder="Nome do Mapa"
-                        value={newMapConfig.name}
-                        onChange={(e) => setNewMapConfig({ ...newMapConfig, name: e.target.value })}
-                        className="w-full bg-black border border-white/10 px-3 py-2 text-white focus:outline-none focus:border-[#ff9c00] transition-all text-sm rounded-lg"
-                      />
-                    </div>
-                    <div className="grid grid-cols-3 gap-2">
+                    <div className="space-y-2">
                       <div>
-                        <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1 ml-1">Mobs/Min</label>
+                        <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1 ml-1">Nome do mapa</label>
                         <input
-                          type="number"
-                          placeholder="Mobs/Min"
-                          value={newMapConfig.mobsPerMin || ''}
-                          onChange={(e) => setNewMapConfig({ ...newMapConfig, mobsPerMin: Number(e.target.value) })}
+                          type="text"
+                          placeholder="Nome do Mapa"
+                          value={newMapConfig.name}
+                          onChange={(e) => {
+                            setNewMapConfig({ ...newMapConfig, name: e.target.value });
+                            setMapError(null);
+                          }}
                           className="w-full bg-black border border-white/10 px-3 py-2 text-white focus:outline-none focus:border-[#ff9c00] transition-all text-sm rounded-lg"
                         />
                       </div>
-                      <div>
-                        <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1 ml-1">Horas Ativo</label>
-                        <input
-                          type="number"
-                          placeholder="Horas Ativo"
-                          value={newMapConfig.activeTime || ''}
-                          onChange={(e) => setNewMapConfig({ ...newMapConfig, activeTime: Number(e.target.value) })}
-                          className="w-full bg-black border border-white/10 px-3 py-2 text-white focus:outline-none focus:border-[#ff9c00] transition-all text-sm rounded-lg"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1 ml-1">Horas Ocioso</label>
-                        <input
-                          type="number"
-                          placeholder="Horas Ocioso"
-                          value={newMapConfig.idleTime || ''}
-                          onChange={(e) => setNewMapConfig({ ...newMapConfig, idleTime: Number(e.target.value) })}
-                          className="w-full bg-black border border-white/10 px-3 py-2 text-white focus:outline-none focus:border-[#ff9c00] transition-all text-sm rounded-lg"
-                        />
-                      </div>
-                    </div>
-                    <button
-                      onClick={addMapConfig}
-                      className="rounded-xl w-full py-2 bg-[#ff9c00]/10 border border-[#ff9c00]/20 text-[#ff9c00] text-[10px] font-black uppercase tracking-widest hover:bg-[#ff9c00] hover:text-white transition-all flex items-center justify-center gap-2"
-                    >
-                      <Plus size={14} /> Adicionar Mapa
-                    </button>
-                  </div>
-
-                  <div className="space-y-1 max-h-[200px] overflow-y-auto pr-2 custom-scrollbar">
-                    {mapConfigs.map(m => (
-                      <div key={m.id} className="flex items-center justify-between p-3 bg-white/5 border border-white/5 group rounded-lg">
+                      <div className="grid grid-cols-2 gap-2">
                         <div>
-                          <p className="text-[10px] font-bold text-white uppercase">{m.name}</p>
-                          <p className="text-[8px] text-slate-500 uppercase">
-                            {m.mobsPerMin} mobs/min • {m.activeTime}h Ativo • {m.idleTime}h Ocioso
-                          </p>
+                          <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1 ml-1">Mobs/Min</label>
+                          <input
+                            type="number"
+                            placeholder="Mobs/Min"
+                            value={newMapConfig.mobsPerMin || ''}
+                            onChange={(e) => {
+                              setNewMapConfig({ ...newMapConfig, mobsPerMin: Number(e.target.value) });
+                              setMapError(null);
+                            }}
+                            className="w-full bg-black border border-white/10 px-3 py-2 text-white focus:outline-none focus:border-[#ff9c00] transition-all text-sm rounded-lg"
+                          />
                         </div>
-                        <button onClick={() => removeMapConfig(m.id)} className="text-red-500 hover:text-red-400 transition-all opacity-0 group-hover:opacity-100">
-                          <Trash2 size={14} />
-                        </button>
+                        <div>
+                          <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1 ml-1">Exp/Mob</label>
+                          <input
+                            type="number"
+                            placeholder="Exp/Mob"
+                            value={newMapConfig.expPerMob || ''}
+                            onChange={(e) => {
+                              setNewMapConfig({ ...newMapConfig, expPerMob: Number(e.target.value) });
+                              setMapError(null);
+                            }}
+                            className="w-full bg-black border border-white/10 px-3 py-2 text-white focus:outline-none focus:border-[#ff9c00] transition-all text-sm rounded-lg"
+                          />
+                        </div>
                       </div>
-                    ))}
-                  </div>
-
-                  <div className="pt-4 border-t border-white/5 flex flex-col gap-1">
-                    <div className="flex justify-between items-center">
-                      <span className="text-[10px] font-bold text-slate-500 uppercase">Total de Horas:</span>
-                      <span className={`text-xs font-bold ${totalHoursConfigured > 24 ? 'text-red-500' : 'text-emerald-500'}`}>
-                        {totalHoursConfigured}h / 24h
-                      </span>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1 ml-1">Horas Ativo</label>
+                          <input
+                            type="number"
+                            placeholder="Horas Ativo"
+                            value={newMapConfig.activeTime || ''}
+                            onChange={(e) => {
+                              setNewMapConfig({ ...newMapConfig, activeTime: Number(e.target.value) });
+                              setMapError(null);
+                            }}
+                            className="w-full bg-black border border-white/10 px-3 py-2 text-white focus:outline-none focus:border-[#ff9c00] transition-all text-sm rounded-lg"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1 ml-1">Horas Ocioso</label>
+                          <input
+                            type="number"
+                            placeholder="Horas Ocioso"
+                            value={newMapConfig.idleTime || ''}
+                            onChange={(e) => {
+                              setNewMapConfig({ ...newMapConfig, idleTime: Number(e.target.value) });
+                              setMapError(null);
+                            }}
+                            className="w-full bg-black border border-white/10 px-3 py-2 text-white focus:outline-none focus:border-[#ff9c00] transition-all text-sm rounded-lg"
+                          />
+                        </div>
+                      </div>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={addMapConfig}
+                          className="rounded-lg flex-1 py-2 bg-[#ff9c00]/10 border border-[#ff9c00]/20 text-[#ff9c00] text-[10px] font-black uppercase tracking-widest hover:bg-[#ff9c00] hover:text-white transition-all flex items-center justify-center gap-2"
+                        >
+                          {editingMapId ? <RefreshCw size={14} /> : <Plus size={14} />}
+                          {editingMapId ? 'Salvar Alterações' : 'Adicionar Mapa'}
+                        </button>
+                        {editingMapId && (
+                          <button
+                            onClick={() => {
+                              setEditingMapId(null);
+                              setMapError(null);
+                              setNewMapConfig({ name: '', mobsPerMin: 0, expPerMob: 0, activeTime: 0, idleTime: 0 });
+                            }}
+                            className="rounded-lg px-4 py-2 bg-white/5 border border-white/10 text-slate-400 text-[10px] font-black uppercase tracking-widest hover:bg-white/10 transition-all"
+                          >
+                            Cancelar
+                          </button>
+                        )}
+                      </div>
+                      {mapError && (
+                        <p className="text-[10px] text-red-500 font-bold uppercase flex items-center gap-1 mt-1 ml-1 animate-pulse">
+                          <AlertTriangle size={12} /> {mapError}
+                        </p>
+                      )}
                     </div>
-                    {totalHoursConfigured > 24 && (
-                      <p className="text-[8px] text-red-500 uppercase font-bold flex items-center gap-1">
-                        <AlertTriangle size={10} /> O total de horas excede 24h!
-                      </p>
-                    )}
-                  </div>
+
+                    <div className="space-y-1 max-h-[200px] overflow-y-auto pr-2 custom-scrollbar">
+                      {mapConfigs.map(m => (
+                        <div key={m.id} className="flex items-center justify-between p-3 bg-white/5 border border-white/5 group rounded-lg">
+                          <div className="flex-1">
+                            <p className="text-[10px] font-bold text-white uppercase">{m.name}</p>
+                            <p className="text-[8px] text-slate-500 uppercase">
+                              {m.mobsPerMin} mobs/min • {m.expPerMob?.toLocaleString()} exp • {m.activeTime}h Ativo • {m.idleTime}h Ocioso
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-all">
+                            <button onClick={() => startEditMap(m)} className="text-blue-500 hover:text-blue-400 p-1">
+                              <RefreshCw size={14} />
+                            </button>
+                            <button onClick={() => removeMapConfig(m.id)} className="text-red-500 hover:text-red-400 p-1">
+                              <Trash2 size={14} />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="pt-4 border-t border-white/5 space-y-3">
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="bg-white/5 p-2 rounded-lg border border-white/5">
+                          <span className="text-[8px] font-bold text-slate-500 uppercase block mb-1">Média Mobs/Min</span>
+                          <span className="text-xs font-bold text-white">{calculatedMobsPerMin.toFixed(1)}</span>
+                        </div>
+                        <div className="bg-white/5 p-2 rounded-lg border border-white/5">
+                          <span className="text-[8px] font-bold text-slate-500 uppercase block mb-1">Média XP/Mob</span>
+                          <span className="text-xs font-bold text-white">{Math.round(calculatedXPPerMob).toLocaleString()}</span>
+                        </div>
+                        <div className="bg-white/5 p-2 rounded-lg border border-white/5">
+                          <span className="text-[8px] font-bold text-slate-500 uppercase block mb-1">Total Ativo</span>
+                          <span className="text-xs font-bold text-white">{mapStats.totalActiveTime}h</span>
+                        </div>
+                        <div className="bg-white/5 p-2 rounded-lg border border-white/5">
+                          <span className="text-[8px] font-bold text-slate-500 uppercase block mb-1">Total Ocioso</span>
+                          <span className="text-xs font-bold text-white">{mapStats.totalIdleTime}h</span>
+                        </div>
+                      </div>
+
+                      <div className="flex justify-between items-center">
+                        <span className="text-[10px] font-bold text-slate-500 uppercase">Total de Horas:</span>
+                        <span className={`text-xs font-bold ${totalHoursConfigured > 24 ? 'text-red-500' : 'text-emerald-500'}`}>
+                          {totalHoursConfigured}h / 24h
+                        </span>
+                      </div>
+                      {totalHoursConfigured > 24 && (
+                        <p className="text-[8px] text-red-500 uppercase font-bold flex items-center gap-1">
+                          <AlertTriangle size={10} /> O total de horas excede 24h!
+                        </p>
+                      )}
+                    </div>
                 </div>
               </section>
 
               {/* Cálculo de Base */}
               <section
-                className="aorus-card p-8 rounded-3xl border-l-2 border-[#ff9c00] relative overflow-hidden"
+                className="aorus-card p-8 rounded-lg border-l-2 border-[#ff9c00] relative overflow-hidden"
               >
                 <div className="flex items-center gap-2 mb-2">
                   <Calculator size={20} className="text-[#ff9c00]" />
@@ -881,7 +1079,7 @@ export default function App() {
                   </h2>
                 </div>
                 <div className="space-y-4">
-                  <div className="bg-white/5 border border-white/10 p-3 rounded-xl flex gap-3 items-start">
+                  <div className="bg-white/5 border border-white/10 p-3 rounded-lg flex gap-3 items-start">
                     <Info size={16} className="text-[#ff9c00] shrink-0 mt-0.5" />
                     <p className="text-[10px] leading-relaxed text-slate-400">
                       <strong className="text-white block mb-1">COMO FUNCIONA O CÁLCULO BASE?</strong>
@@ -938,7 +1136,7 @@ export default function App() {
 
                   <button
                     onClick={handleCalcularBase}
-                    className="w-full h-10 px-4 bg-[#ff9c00] hover:bg-[#ffb400] text-black font-black text-[10px] uppercase tracking-widest rounded-xl transition-all shadow-[0_0_20px_rgba(255,156,0,0.2)] flex items-center justify-center gap-3 active:scale-95 disabled:opacity-50"
+                    className="w-full h-10 px-4 bg-[#ff9c00] hover:bg-[#ffb400] text-black font-black text-[10px] uppercase tracking-widest rounded-lg transition-all shadow-[0_0_20px_rgba(255,156,0,0.2)] flex items-center justify-center gap-3 active:scale-95 disabled:opacity-50"
                   >
                     CALCULAR BASE <ChevronRight size={18} />
                   </button>
@@ -952,17 +1150,17 @@ export default function App() {
 
               {/* Configurações */}
               <section
-                className="aorus-card p-8 rounded-3xl border-l-2 border-[#ff9c00] relative overflow-hidden"
+                className="aorus-card p-8 rounded-lg border-l-2 border-[#ff9c00] relative overflow-hidden"
               >
                 <div className="flex items-center gap-2 mb-2">
-                  <Target size={20} className="text-[#ff9c00]" />
+                  <MapPin size={20} className="text-[#ff9c00]" />
                   <h2 className="text-2xl font-black text-white uppercase italic tracking-tight">
                     Configuração de  <span className="text-[#ff9c00]">XP</span>
                   </h2>
                 </div>
 
                 <div className="space-y-4">
-                  <div className="bg-white/5 border border-white/10 p-3 rounded-xl flex gap-3 items-start">
+                  <div className="bg-white/5 border border-white/10 p-3 rounded-lg flex gap-3 items-start">
                     <Info size={16} className="text-[#ff9c00] shrink-0 mt-0.5" />
                     <p className="text-[10px] leading-relaxed text-slate-400">
                       <strong className="text-white block mb-1">COMO FUNCIONA A CONFIGURAÇÃO?</strong>
@@ -1068,7 +1266,7 @@ export default function App() {
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-6">
               {/* Daily Quests (Group) */}
-              <section className="aorus-card p-8 rounded-3xl border-l-2 border-[#ff9c00]">
+              <section className="aorus-card p-8 rounded-lg border-l-2 border-[#ff9c00]">
                 <div className="flex items-center justify-between mb-6">
                   <div className="flex items-center gap-2 mb-2">
                     <ListChecks size={20} className="text-[#ff9c00]" />
@@ -1097,27 +1295,46 @@ export default function App() {
                         className="w-full bg-black border border-white/10 px-3 py-2 text-white focus:outline-none focus:border-[#ff9c00] transition-all text-sm rounded-lg"
                       />
                     </div>
-                    <button
-                      onClick={addQuest}
-                      className="rounded-xl col-span-2 py-2 bg-[#ff9c00]/10 border border-[#ff9c00]/20 text-[#ff9c00] text-[10px] font-black uppercase tracking-widest hover:bg-[#ff9c00] hover:text-white transition-all flex items-center justify-center gap-2"
-                    >
-                      <Plus size={14} /> Adicionar Diária (G)
-                    </button>
+                    <div className="flex gap-2 col-span-2">
+                      <button
+                        onClick={addQuest}
+                        className="rounded-lg flex-1 py-2 bg-[#ff9c00]/10 border border-[#ff9c00]/20 text-[#ff9c00] text-[10px] font-black uppercase tracking-widest hover:bg-[#ff9c00] hover:text-white transition-all flex items-center justify-center gap-2"
+                      >
+                        {editingQuestId && newQuest.type === 'daily' ? <RefreshCw size={14} /> : <Plus size={14} />}
+                        {editingQuestId && newQuest.type === 'daily' ? 'Salvar' : 'Adicionar Diária (G)'}
+                      </button>
+                      {editingQuestId && newQuest.type === 'daily' && (
+                        <button
+                          onClick={() => {
+                            setEditingQuestId(null);
+                            setNewQuest({ name: '', exp: 0, mobsNeeded: 0, type: 'daily' });
+                          }}
+                          className="rounded-lg px-4 py-2 bg-white/5 border border-white/10 text-slate-400 text-[10px] font-black uppercase tracking-widest hover:bg-white/10 transition-all"
+                        >
+                          Cancelar
+                        </button>
+                      )}
+                    </div>
                   </div>
 
                   <div className="space-y-1 max-h-[200px] overflow-y-auto pr-2 custom-scrollbar">
                     {quests.filter(q => q.type === 'daily').map(q => (
-                      <div key={q.id} className="flex items-center justify-between p-2 bg-white/5 border border-white/5 group">
+                      <div key={q.id} className="flex items-center justify-between p-2 bg-white/5 border border-white/5 group rounded-lg">
                         <div className="flex items-center gap-3">
                           <button onClick={() => toggleQuest(q.id)} className={`w-4 h-4 border flex items-center justify-center ${q.active ? 'bg-[#ff9c00] border-[#ff9c00]' : 'border-white/20'}`}>
                             {q.active && <Zap size={10} className="text-white fill-white" />}
                           </button>
                           <span className={`text-[10px] font-bold uppercase ${q.active ? 'text-white' : 'text-slate-500'}`}>{q.name}</span>
                         </div>
-                        <div className="flex items-center gap-3">
-                          <span className="text-[10px] text-[#ff9c00]">{formatXP(q.exp)}</span>
+                        <div className="flex items-center gap-2">
+                          <span className="text-[10px] text-[#ff9c00] mr-2">{formatXP(q.exp)}</span>
                           {!q.isFixed && (
-                            <button onClick={() => removeQuest(q.id)} className="opacity-0 group-hover:opacity-100 text-red-500 hover:text-red-400 transition-all">
+                            <button onClick={() => startEditQuest(q)} className="opacity-0 group-hover:opacity-100 text-blue-500 hover:text-blue-400 transition-all p-1">
+                              <RefreshCw size={12} />
+                            </button>
+                          )}
+                          {!q.isFixed && (
+                            <button onClick={() => removeQuest(q.id)} className="opacity-0 group-hover:opacity-100 text-red-500 hover:text-red-400 transition-all p-1">
                               <Trash2 size={12} />
                             </button>
                           )}
@@ -1129,7 +1346,7 @@ export default function App() {
               </section>
 
               {/* Daily Quests (Solo) */}
-              <section className="aorus-card p-8 rounded-3xl border-l-2 border-[#ff9c00]">
+              <section className="aorus-card p-8 rounded-lg border-l-2 border-[#ff9c00]">
                 <div className="flex items-center justify-between mb-6">
                   <div className="flex items-center gap-2 mb-2">
                     <ListChecks size={20} className="text-[#ff9c00]" />
@@ -1158,27 +1375,46 @@ export default function App() {
                         className="w-full bg-black border border-white/10 px-3 py-2 text-white focus:outline-none focus:border-[#ff9c00] transition-all text-sm rounded-lg"
                       />
                     </div>
-                    <button
-                      onClick={addQuest}
-                      className="rounded-xl col-span-2 py-2 bg-[#ff9c00]/10 border border-[#ff9c00]/20 text-[#ff9c00] text-[10px] font-black uppercase tracking-widest hover:bg-[#ff9c00] hover:text-white transition-all flex items-center justify-center gap-2"
-                    >
-                      <Plus size={14} /> Adicionar Diária (S)
-                    </button>
+                    <div className="flex gap-2 col-span-2">
+                      <button
+                        onClick={addQuest}
+                        className="rounded-lg flex-1 py-2 bg-[#ff9c00]/10 border border-[#ff9c00]/20 text-[#ff9c00] text-[10px] font-black uppercase tracking-widest hover:bg-[#ff9c00] hover:text-white transition-all flex items-center justify-center gap-2"
+                      >
+                        {editingQuestId && newQuest.type === 'daily_solo' ? <RefreshCw size={14} /> : <Plus size={14} />}
+                        {editingQuestId && newQuest.type === 'daily_solo' ? 'Salvar' : 'Adicionar Diária (S)'}
+                      </button>
+                      {editingQuestId && newQuest.type === 'daily_solo' && (
+                        <button
+                          onClick={() => {
+                            setEditingQuestId(null);
+                            setNewQuest({ name: '', exp: 0, mobsNeeded: 0, type: 'daily_solo' });
+                          }}
+                          className="rounded-lg px-4 py-2 bg-white/5 border border-white/10 text-slate-400 text-[10px] font-black uppercase tracking-widest hover:bg-white/10 transition-all"
+                        >
+                          Cancelar
+                        </button>
+                      )}
+                    </div>
                   </div>
 
                   <div className="space-y-1 max-h-[200px] overflow-y-auto pr-2 custom-scrollbar">
                     {quests.filter(q => q.type === 'daily_solo').map(q => (
-                      <div key={q.id} className="flex items-center justify-between p-2 bg-white/5 border border-white/5 group">
+                      <div key={q.id} className="flex items-center justify-between p-2 bg-white/5 border border-white/5 group rounded-lg">
                         <div className="flex items-center gap-3">
                           <button onClick={() => toggleQuest(q.id)} className={`w-4 h-4 border flex items-center justify-center ${q.active ? 'bg-[#ff9c00] border-[#ff9c00]' : 'border-white/20'}`}>
                             {q.active && <Zap size={10} className="text-white fill-white" />}
                           </button>
                           <span className={`text-[10px] font-bold uppercase ${q.active ? 'text-white' : 'text-slate-500'}`}>{q.name}</span>
                         </div>
-                        <div className="flex items-center gap-3">
-                          <span className="text-[10px] text-[#ff9c00]">{formatXP(q.exp)}</span>
+                        <div className="flex items-center gap-2">
+                          <span className="text-[10px] text-[#ff9c00] mr-2">{formatXP(q.exp)}</span>
                           {!q.isFixed && (
-                            <button onClick={() => removeQuest(q.id)} className="opacity-0 group-hover:opacity-100 text-red-500 hover:text-red-400 transition-all">
+                            <button onClick={() => startEditQuest(q)} className="opacity-0 group-hover:opacity-100 text-blue-500 hover:text-blue-400 transition-all p-1">
+                              <RefreshCw size={12} />
+                            </button>
+                          )}
+                          {!q.isFixed && (
+                            <button onClick={() => removeQuest(q.id)} className="opacity-0 group-hover:opacity-100 text-red-500 hover:text-red-400 transition-all p-1">
                               <Trash2 size={12} />
                             </button>
                           )}
@@ -1190,7 +1426,7 @@ export default function App() {
               </section>
 
               {/* Repetitive Quests (Group) */}
-              <section className="aorus-card p-8 rounded-3xl border-l-2 border-[#ff9c00]">
+              <section className="aorus-card p-8 rounded-lg border-l-2 border-[#ff9c00]">
                 <div className="flex items-center justify-between mb-6">
                   <div className="flex items-center gap-2 mb-2">
                     <Repeat size={20} className="text-[#ff9c00]" />
@@ -1226,17 +1462,31 @@ export default function App() {
                         className="w-full bg-black border border-white/10 px-3 py-2 text-white focus:outline-none focus:border-[#ff9c00] transition-all text-sm rounded-lg"
                       />
                     </div>
-                    <button
-                      onClick={addQuest}
-                      className="rounded-xl w-full py-2 bg-[#ff9c00]/10 border border-[#ff9c00]/20 text-[#ff9c00] text-[10px] font-black uppercase tracking-widest hover:bg-[#ff9c00] hover:text-white transition-all flex items-center justify-center gap-2"
-                    >
-                      <Plus size={14} /> Adicionar Repetitiva (G)
-                    </button>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={addQuest}
+                        className="rounded-lg flex-1 py-2 bg-[#ff9c00]/10 border border-[#ff9c00]/20 text-[#ff9c00] text-[10px] font-black uppercase tracking-widest hover:bg-[#ff9c00] hover:text-white transition-all flex items-center justify-center gap-2"
+                      >
+                        {editingQuestId && newQuest.type === 'repetitive' ? <RefreshCw size={14} /> : <Plus size={14} />}
+                        {editingQuestId && newQuest.type === 'repetitive' ? 'Salvar' : 'Adicionar Repetitiva (G)'}
+                      </button>
+                      {editingQuestId && newQuest.type === 'repetitive' && (
+                        <button
+                          onClick={() => {
+                            setEditingQuestId(null);
+                            setNewQuest({ name: '', exp: 0, mobsNeeded: 0, type: 'repetitive' });
+                          }}
+                          className="rounded-lg px-4 py-2 bg-white/5 border border-white/10 text-slate-400 text-[10px] font-black uppercase tracking-widest hover:bg-white/10 transition-all"
+                        >
+                          Cancelar
+                        </button>
+                      )}
+                    </div>
                   </div>
 
                   <div className="space-y-1 max-h-[200px] overflow-y-auto pr-2 custom-scrollbar">
                     {quests.filter(q => q.type === 'repetitive').map(q => (
-                      <div key={q.id} className="flex items-center justify-between p-2 bg-white/5 border border-white/5 group">
+                      <div key={q.id} className="flex items-center justify-between p-2 bg-white/5 border border-white/5 group rounded-lg">
                         <div className="flex items-center gap-3">
                           <button onClick={() => toggleQuest(q.id)} className={`w-4 h-4 border flex items-center justify-center ${q.active ? 'bg-[#ff9c00] border-[#ff9c00]' : 'border-white/20'}`}>
                             {q.active && <Zap size={10} className="text-white fill-white" />}
@@ -1246,10 +1496,15 @@ export default function App() {
                             <p className="text-[8px] text-slate-600 uppercase font-bold">{q.mobsNeeded} Mobs</p>
                           </div>
                         </div>
-                        <div className="flex items-center gap-3">
-                          <span className="text-[10px] text-[#ff9c00]">{formatXP(q.exp)}</span>
+                        <div className="flex items-center gap-2">
+                          <span className="text-[10px] text-[#ff9c00] mr-2">{formatXP(q.exp)}</span>
                           {!q.isFixed && (
-                            <button onClick={() => removeQuest(q.id)} className="opacity-0 group-hover:opacity-100 text-red-500 hover:text-red-400 transition-all">
+                            <button onClick={() => startEditQuest(q)} className="opacity-0 group-hover:opacity-100 text-blue-500 hover:text-blue-400 transition-all p-1">
+                              <RefreshCw size={12} />
+                            </button>
+                          )}
+                          {!q.isFixed && (
+                            <button onClick={() => removeQuest(q.id)} className="opacity-0 group-hover:opacity-100 text-red-500 hover:text-red-400 transition-all p-1">
                               <Trash2 size={12} />
                             </button>
                           )}
@@ -1261,7 +1516,7 @@ export default function App() {
               </section>
 
               {/* Repetitive Quests (Solo) */}
-              <section className="aorus-card p-8 rounded-3xl border-l-2 border-[#ff9c00]">
+              <section className="aorus-card p-8 rounded-lg border-l-2 border-[#ff9c00]">
                 <div className="flex items-center justify-between mb-6">
                   <div className="flex items-center gap-2 mb-2">
                     <Repeat size={20} className="text-[#ff9c00]" />
@@ -1297,17 +1552,31 @@ export default function App() {
                         className="w-full bg-black border border-white/10 px-3 py-2 text-white focus:outline-none focus:border-[#ff9c00] transition-all text-sm rounded-lg"
                       />
                     </div>
-                    <button
-                      onClick={addQuest}
-                      className="rounded-xl w-full py-2 bg-[#ff9c00]/10 border border-[#ff9c00]/20 text-[#ff9c00] text-[10px] font-black uppercase tracking-widest hover:bg-[#ff9c00] hover:text-white transition-all flex items-center justify-center gap-2"
-                    >
-                      <Plus size={14} /> Adicionar Repetitiva (S)
-                    </button>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={addQuest}
+                        className="rounded-lg flex-1 py-2 bg-[#ff9c00]/10 border border-[#ff9c00]/20 text-[#ff9c00] text-[10px] font-black uppercase tracking-widest hover:bg-[#ff9c00] hover:text-white transition-all flex items-center justify-center gap-2"
+                      >
+                        {editingQuestId && newQuest.type === 'solo' ? <RefreshCw size={14} /> : <Plus size={14} />}
+                        {editingQuestId && newQuest.type === 'solo' ? 'Salvar' : 'Adicionar Repetitiva (S)'}
+                      </button>
+                      {editingQuestId && newQuest.type === 'solo' && (
+                        <button
+                          onClick={() => {
+                            setEditingQuestId(null);
+                            setNewQuest({ name: '', exp: 0, mobsNeeded: 0, type: 'solo' });
+                          }}
+                          className="rounded-lg px-4 py-2 bg-white/5 border border-white/10 text-slate-400 text-[10px] font-black uppercase tracking-widest hover:bg-white/10 transition-all"
+                        >
+                          Cancelar
+                        </button>
+                      )}
+                    </div>
                   </div>
 
                   <div className="space-y-1 max-h-[200px] overflow-y-auto pr-2 custom-scrollbar">
                     {quests.filter(q => q.type === 'solo').map(q => (
-                      <div key={q.id} className="flex items-center justify-between p-2 bg-white/5 border border-white/5 group">
+                      <div key={q.id} className="flex items-center justify-between p-2 bg-white/5 border border-white/5 group rounded-lg">
                         <div className="flex items-center gap-3">
                           <button onClick={() => toggleQuest(q.id)} className={`w-4 h-4 border flex items-center justify-center ${q.active ? 'bg-[#ff9c00] border-[#ff9c00]' : 'border-white/20'}`}>
                             {q.active && <Zap size={10} className="text-white fill-white" />}
@@ -1317,10 +1586,15 @@ export default function App() {
                             <p className="text-[8px] text-slate-600 uppercase font-bold">{q.mobsNeeded} Mobs</p>
                           </div>
                         </div>
-                        <div className="flex items-center gap-3">
-                          <span className="text-[10px] text-[#ff9c00]">{formatXP(q.exp)}</span>
+                        <div className="flex items-center gap-2">
+                          <span className="text-[10px] text-[#ff9c00] mr-2">{formatXP(q.exp)}</span>
                           {!q.isFixed && (
-                            <button onClick={() => removeQuest(q.id)} className="opacity-0 group-hover:opacity-100 text-red-500 hover:text-red-400 transition-all">
+                            <button onClick={() => startEditQuest(q)} className="opacity-0 group-hover:opacity-100 text-blue-500 hover:text-blue-400 transition-all p-1">
+                              <RefreshCw size={12} />
+                            </button>
+                          )}
+                          {!q.isFixed && (
+                            <button onClick={() => removeQuest(q.id)} className="opacity-0 group-hover:opacity-100 text-red-500 hover:text-red-400 transition-all p-1">
                               <Trash2 size={12} />
                             </button>
                           )}
@@ -1344,7 +1618,7 @@ export default function App() {
               <div className="grid grid-cols-1 gap-6">
                 {/* Composition Pie Chart */}
                 <section
-                  className="aorus-card p-8 rounded-3xl flex flex-col h-[400px] lg:col-span-1"
+                  className="aorus-card p-8 rounded-lg flex flex-col h-[400px] lg:col-span-1"
                 >
                   <div>
                     <div className="flex items-center gap-2 mb-2">
@@ -1706,12 +1980,12 @@ function StatCard({ title, value, subtitle, icon, color }: StatCardProps) {
   const styles = colorVariants[color] || colorVariants.orange;
 
   return (
-    <div className={`aorus-card p-8 rounded-3xl flex flex-col relative overflow-hidden group ${styles.border} transition-all duration-500`}>
+    <div className={`aorus-card p-8 rounded-lg flex flex-col relative overflow-hidden group ${styles.border} transition-all duration-500`}>
       <div className={`absolute -right-8 -top-8 w-40 h-40 ${styles.glow} rounded-full blur-[60px] transition-all duration-700`}></div>
 
       <div className="flex items-center justify-between mb-8 relative z-10">
         <span className="text-slate-500 text-[11px] font-black uppercase tracking-[0.3em]">{title}</span>
-        <div className={`p-4 rounded-2xl ${styles.iconBg} ${styles.iconText} transition-all duration-500 group-hover:scale-110 border border-white/5`}>
+        <div className={`p-4 rounded-lg ${styles.iconBg} ${styles.iconText} transition-all duration-500 group-hover:scale-110 border border-white/5`}>
           {icon}
         </div>
       </div>
@@ -1728,7 +2002,7 @@ function StatCard({ title, value, subtitle, icon, color }: StatCardProps) {
 function ChartContainer({ title, subtitle, data, dataKey, color, days, formatXP }: any) {
   return (
     <section
-      className="aorus-card p-8 rounded-3xl flex flex-col h-[400px]"
+      className="aorus-card p-8 rounded-lg flex flex-col h-[400px]"
     >
       <div className="flex items-center justify-between mb-6">
         <div>
